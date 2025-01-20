@@ -5,6 +5,8 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 from stable_baselines3 import SAC
 import time
+from sac.sac import sac
+import sac.core as core
 
 TIMESTEPS = 1000000
 
@@ -45,7 +47,7 @@ class MultiTaskEnv(gym.Wrapper):
         self.rewards[self.active_index].append(self.current_episode_rewards)
         self.current_episode_rewards = 0 
 
-        return self._get_obs(obs), ""
+        return self._get_obs(obs)
     
     def get_env_names(self):
         '''
@@ -62,23 +64,27 @@ class MultiTaskEnv(gym.Wrapper):
 
 
     def step(self, action):
-        obs, reward, done, info, *kwargs = self.active_env.step(action)
+        obs, reward, terminated, truncated, info, *kwargs = self.active_env.step(action)
+        done = terminated or truncated
         if not done:
             self.current_episode_rewards += reward
         else:
             self.rewards[self.active_index].append(self.current_episode_rewards + reward)
             self.current_episode_rewards = 0 
+            self.reset()
         return self._get_obs(obs), reward, done, info, *kwargs
 
     def _get_obs(self, obs):
         # Create a one-hot encoding of the task ID
         task_one_hot = np.zeros(self.num_envs)
         task_one_hot[self.active_index] = 1.0
-        try:
-            return np.concatenate([obs, task_one_hot])
-        # sometimes the observation gets returned with an empty dictionary in a list - not sure why
-        except ValueError:
-            return np.concatenate([obs[0], task_one_hot])
+
+        # sometimes obs is a tuple??
+        while type(obs) == tuple:
+            obs = obs[0]
+
+        return np.concatenate([obs, task_one_hot])
+
         
 
     def set_max_min_obs(self):
@@ -112,13 +118,24 @@ for name, env_cls in mt10.train_classes.items():
     names.append(name)
 
 
+# env = MultiTaskEnv(training_envs, names)
+
+# model = SAC("MlpPolicy", env, verbose=1)
+# model.learn(total_timesteps=TIMESTEPS, log_interval=4)
+
+# train spinningup sac on the environments
+
 env = MultiTaskEnv(training_envs, names)
-
-model = SAC("MlpPolicy", env, verbose=1)
-model.learn(total_timesteps=TIMESTEPS, log_interval=4)
-
-
 obs = env.reset()
+
+print('training...')
+sac(lambda: env, actor_critic=core.MLPActorCritic, ac_kwargs=dict(hidden_sizes=[256, 256]), 
+    gamma=0.99, seed=SEED, epochs=50)
+
+
+
+
+
 names = env.get_env_names()
 print(env.rewards)
 
@@ -135,9 +152,4 @@ for i, rewards in enumerate(env.rewards):
 
 
 print(f'{time.time() - start} seconds since start')
-# while True:
-#     action, _states = model.predict(obs, deterministic=True)
-#     obs, reward, terminated, truncated, info = env.step(action)
-#     if terminated or truncated:
-#         obs = env.reset()
 
