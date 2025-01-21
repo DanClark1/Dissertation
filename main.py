@@ -11,13 +11,13 @@ import sac.core as core
 TIMESTEPS = 1000000
 
 # Define a custom environment wrapper to include the one-hot task encoding
-class MultiTaskEnv(gym.Wrapper):
+class MultiTaskEnv(gym.Env):
     def __init__(self, env_list, env_names=None):
-        super(MultiTaskEnv, self).__init__(env)
+        super().__init__()
         self.num_envs = len(env_list)
         self.envs = env_list
         self.env_names = env_names
-
+        print(self.num_envs)
         # observation space is max and min of all envs (not sure if this is the same for each anyway?)
         # and then the one hot vector on the end
         self.set_max_min_obs()
@@ -27,10 +27,14 @@ class MultiTaskEnv(gym.Wrapper):
             dtype=np.float64
         )
 
+        self.action_space = self.envs[0].action_space # assume all envs have the same action space
+
         self.current_episode_rewards = 0
         self.rewards = [[] for i in self.envs]
         # initialise a random environment
         self.sample_active_env()
+
+        self.has_reward_been_recorded = False
 
     def reset(self, **kwargs):
         '''
@@ -38,16 +42,20 @@ class MultiTaskEnv(gym.Wrapper):
         then resamples another random environemt
         and returns the observation state of that'''
 
-        self.active_env.reset(**kwargs)
+
+        if self.has_reward_been_recorded:
+            self.rewards[self.active_index].append(self.current_episode_rewards)
+            self.current_episode_rewards = 0 
         
+
+        self.active_env.reset(**kwargs)
         # resample
         self.sample_active_env()
         obs = self.active_env.reset(**kwargs)
 
-        self.rewards[self.active_index].append(self.current_episode_rewards)
-        self.current_episode_rewards = 0 
+        self.has_reward_been_recorded = False
 
-        return self._get_obs(obs)
+        return self._get_obs(obs), {}
     
     def get_env_names(self):
         '''
@@ -66,13 +74,11 @@ class MultiTaskEnv(gym.Wrapper):
     def step(self, action):
         obs, reward, terminated, truncated, info, *kwargs = self.active_env.step(action)
         done = terminated or truncated
-        if not done:
-            self.current_episode_rewards += reward
-        else:
-            self.rewards[self.active_index].append(self.current_episode_rewards + reward)
-            self.current_episode_rewards = 0 
-            self.reset()
-        return self._get_obs(obs), reward, done, info, *kwargs
+
+        self.has_reward_been_recorded = True
+        self.current_episode_rewards += reward
+
+        return self._get_obs(obs), reward, terminated, truncated, info, *kwargs
 
     def _get_obs(self, obs):
         # Create a one-hot encoding of the task ID
@@ -84,7 +90,6 @@ class MultiTaskEnv(gym.Wrapper):
             obs = obs[0]
 
         return np.concatenate([obs, task_one_hot])
-
         
 
     def set_max_min_obs(self):
@@ -109,8 +114,14 @@ mt10 = metaworld.MT10(seed=SEED)
 training_envs = []
 names = []
 
+render = True
+
 for name, env_cls in mt10.train_classes.items():
-    env = env_cls()
+    if render:
+        env = env_cls()
+        render = False
+    else:
+        env = env_cls()
     task = random.choice([task for task in mt10.train_tasks
                         if task.env_name == name])
     env.set_task(task)
@@ -132,10 +143,6 @@ print('training...')
 sac(lambda: env, actor_critic=core.MLPActorCritic, ac_kwargs=dict(hidden_sizes=[256, 256]), 
     gamma=0.99, seed=SEED, epochs=50)
 
-
-
-
-
 names = env.get_env_names()
 print(env.rewards)
 
@@ -148,6 +155,10 @@ for i, rewards in enumerate(env.rewards):
     plt.ylabel("Rewards")
     plt.grid()
     plt.savefig(f'images/{names[i]}_sac_baseline.png')
+
+
+obs = env.reset()
+
 
 
 
