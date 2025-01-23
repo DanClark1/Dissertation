@@ -185,7 +185,7 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
 
             while not (done or (ep_len == max_ep_len)):
                 act = get_action(o, deterministic=True)
-                act = np.squeeze(act, 0)
+                act = act.squeeze()
                 obs2, r, terminated, truncated, _info = test_env.step(act)
                 done = terminated or truncated
                 ep_ret += r
@@ -209,6 +209,7 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
         if t > start_steps:
             
             a = get_action(o)
+            a = a.squeeze()
         else:
             a = env.action_space.sample()
 

@@ -58,7 +58,15 @@ class SquashedGaussianMoEActor(nn.Module):
 
         backbone_output = self.backbone(obs)
 
-        expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
+        # Define a function to forward pass through each expert
+        def expert_forward(expert, input_tensor):
+            return expert(input_tensor)
+
+        # Parallelize the expert outputs
+        futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
+
+        # Gather the results
+        expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
 
         # compute values and keys
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
@@ -132,8 +140,16 @@ class MoEQFunction(nn.Module):
     def forward(self, obs, task, act):
 
         backbone_output = self.backbone(torch.cat([obs, act], dim=-1))
-        
-        expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
+
+        # Define a function to forward pass through each expert
+        def expert_forward(expert, input_tensor):
+            return expert(input_tensor)
+
+        # Parallelize the expert outputs
+        futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
+
+        # Gather the results
+        expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
 
         # compute values and keys
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
