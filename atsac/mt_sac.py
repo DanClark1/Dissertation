@@ -81,7 +81,9 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters())
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    replay_obs_dim = list(obs_dim)
+    replay_obs_dim[-1] = replay_obs_dim[-1] + num_tasks
+    replay_buffer = ReplayBuffer(obs_dim=tuple(replay_obs_dim), act_dim=act_dim, size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
@@ -89,7 +91,8 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
     def compute_loss_q(data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
         o_trunc, task = format_obs(o, num_tasks)
-        o2_trunc, _ = format_obs(o, num_tasks) # task shouldn't change
+        o2_trunc, _ = format_obs(o2, num_tasks) # task shouldn't change
+
         q1 = ac.q1(o_trunc, task, a)
         q2 = ac.q2(o_trunc, task, a)
 
@@ -110,7 +113,6 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
                       Q2Vals=q2.detach().numpy())
         return loss_q, q_info
 
-    # NOTE TO SELF: I think this works it just needs testing
     def compute_loss_pi(data):
         o = data['obs']
         o_trunc, task = format_obs(o, num_tasks)
@@ -170,9 +172,9 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
         :param num_tasks: number of tasks
         :return: observation vector without the one-hot encoding
         '''
-        task = np.argmax(o[-num_tasks:]) - (len(o) - num_tasks)
+        task = np.argmax(o[...,-num_tasks:], axis=-1)
 
-        return o[:-num_tasks], task
+        return o[..., :-num_tasks], task
 
     def test_agent():
         for _ in range(num_test_episodes):
@@ -182,7 +184,8 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
             ep_ret, ep_len = 0, 0
 
             while not (done or (ep_len == max_ep_len)):
-                act = get_action(obs, deterministic=True)
+                act = get_action(o, deterministic=True)
+                act = np.squeeze(act, 0)
                 obs2, r, terminated, truncated, _info = test_env.step(act)
                 done = terminated or truncated
                 ep_ret += r

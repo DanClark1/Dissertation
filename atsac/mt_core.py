@@ -42,37 +42,35 @@ class SquashedGaussianMoEActor(nn.Module):
         self.task_queries = nn.Parameter(torch.randn(num_tasks, task_queries_dim))
 
         # matricies for computing values and keys from the experts
-        # num experts x size of expert output x size of task query
-        self.key_matricies = nn.Parameter(torch.randn(num_experts, backbone_hidden_sizes[-1], task_queries_dim))
-        self.value_matricies = nn.Parameter(torch.randn(num_experts, backbone_hidden_sizes[-1], task_queries_dim))
+        self.key_matricies = nn.Parameter(torch.randn(num_experts,task_queries_dim, expert_hidden_sizes[-1]))
+        self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, expert_hidden_sizes[-1]))
 
-        self.mu_layer = mlp(expert_hidden_sizes[-1], backbone_hidden_sizes[0], act_dim)
-        self.log_std_layer = mlp(expert_hidden_sizes[-1], backbone_hidden_sizes[0], act_dim)
+        self.mu_layer = mlp([expert_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
+        self.log_std_layer = mlp([expert_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
         self.act_limit = act_limit
 
     def forward(self, obs, task, deterministic=False, with_logprob=True):
-        backbone_out = self.backbone(obs)
+    
+        # if obs is a single observation, add a batch dimension
+        if obs.dim() == 1:
+            obs = obs.unsqueeze(0)
+            task = torch.tensor([task])
 
+        backbone_output = self.backbone(obs)
 
-        # compute expert outputs
-        expert_outputs = []
-        for expert in self.experts:
-            expert_outputs.append(torch.jit.fork(expert,backbone_out))
-
-        # wait for all futures to complete and collect the results
-        expert_outputs = [torch.jit.wait(future) for future in expert_outputs]
-        expert_outputs = torch.stack(expert_outputs, dim=0)
+        expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # compute values and keys
-        expert_values = torch.einsum('nij,nj->ni', self.value_matricies, expert_outputs)
-        expert_keys = torch.einsum('nij,nj->ni', self.keys_matricies, expert_outputs)
+        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
+        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
 
         # compute attention weights
-        attention_scores = torch.einsum('ni,i->n', expert_keys, self.task_queries[task])
+        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
         # summing together each expert scaled by attention weights
-        tower_input = torch.einsum('n,ni->i', attention_weights, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
 
         mu = self.mu_layer(tower_input)
@@ -109,7 +107,6 @@ class MoEQFunction(nn.Module):
 
     def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation):
         super().__init__()
-
         # for attention to work these dimensions need to match
         task_queries_dim = expert_hidden_sizes[-1]
 
@@ -125,46 +122,35 @@ class MoEQFunction(nn.Module):
         self.task_queries = nn.Parameter(torch.randn(num_tasks, task_queries_dim))
 
         # matricies for computing values and keys from the experts
-        # num experts x size of expert output x size of task query
-        self.key_matricies = nn.Parameter(torch.randn(num_experts, backbone_hidden_sizes[-1], task_queries_dim))
-        self.value_matricies = nn.Parameter(torch.randn(num_experts, backbone_hidden_sizes[-1], task_queries_dim))
+        self.key_matricies = nn.Parameter(torch.randn(num_experts,task_queries_dim, expert_hidden_sizes[-1]))
+        self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, expert_hidden_sizes[-1]))
 
         # tower network (just assuming its the same dimensions as the backbone network)
         self.tower = mlp([expert_hidden_sizes[-1]] + list(backbone_hidden_sizes) + [1], activation=activation)
 
 
-
     def forward(self, obs, task, act):
-        backbone = self.backbone(torch.cat([obs, act], dim=-1))
+
+        backbone_output = self.backbone(torch.cat([obs, act], dim=-1))
         
-        # compute expert outputs
-        expert_outputs = []
-        for expert in self.experts:
-            expert_outputs.append(torch.jit.fork(expert,backbone))
-
-        # wait for all futures to complete and collect the results
-        expert_outputs = [torch.jit.wait(future) for future in expert_outputs]
-
-        expert_outputs = torch.stack(expert_outputs, dim=0)
+        expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # compute values and keys
-        expert_values = torch.einsum('nij,nj->ni', self.value_matricies, expert_outputs)
-        expert_keys = torch.einsum('nij,nj->ni', self.keys_matricies, expert_outputs)
+        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
+        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
 
         # compute attention weights
-        attention_scores = torch.einsum('ni,i->n', expert_keys, self.task_queries[task])
+        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
         # summing together each expert scaled by attention weights
-        tower_input = torch.einsum('n,ni->i', attention_weights, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
         # pass through tower network
         q = self.tower(tower_input)
         
         return torch.squeeze(q, -1) # Critical to ensure q has right shape.
-    
-
-
 
 class MoEActorCritic(nn.Module):
 
@@ -179,7 +165,7 @@ class MoEActorCritic(nn.Module):
         act_limit = action_space.high[0]
 
         # build policy and value functions
-        self.pi = SquashedGaussianMoEActor(obs_dim, act_dim, actor_hidden_sizes, activation, act_limit)
+        self.pi = SquashedGaussianMoEActor(obs_dim, act_dim, actor_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit)
         self.q1 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation)
         self.q2 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation)
 

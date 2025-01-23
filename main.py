@@ -7,12 +7,16 @@ from stable_baselines3 import SAC
 import time
 from sac.sac import sac
 import sac.core as core
+import atsac.mt_core as mt_core
+from atsac.mt_sac import at_sac
 
 TIMESTEPS = 1000000
 
 # Define a custom environment wrapper to include the one-hot task encoding
 class MultiTaskEnv(gym.Env):
-    def __init__(self, env_list, env_names=None):
+    def __init__(self, env_list, split_obs=False, env_names=None):
+        '''
+        split_obs just determines whether to include the one hot vector in the observation space size'''
         super().__init__()
         self.num_envs = len(env_list)
         self.envs = env_list
@@ -21,11 +25,20 @@ class MultiTaskEnv(gym.Env):
         # observation space is max and min of all envs (not sure if this is the same for each anyway?)
         # and then the one hot vector on the end
         self.set_max_min_obs()
-        self.observation_space = gym.spaces.Box(
-            low=np.concatenate([self.obs_min, np.zeros(self.num_envs)]),
-            high=np.concatenate([self.obs_max, np.ones(self.num_envs)]),
-            dtype=np.float64
-        )
+
+        if not split_obs:
+            self.observation_space = gym.spaces.Box(
+                low=np.concatenate([self.obs_min, np.zeros(self.num_envs)]),
+                high=np.concatenate([self.obs_max, np.ones(self.num_envs)]),
+                dtype=np.float64
+            )
+        else:
+            # ignore one hot vector
+            self.observation_space = gym.spaces.Box(
+                low=np.concatenate([self.obs_min]),
+                high=np.concatenate([self.obs_max]),
+                dtype=np.float64
+            )
 
         self.action_space = self.envs[0].action_space # assume all envs have the same action space
 
@@ -106,61 +119,55 @@ class MultiTaskEnv(gym.Env):
                     self.obs_min = np.minimum(self.obs_min, self.envs[i].observation_space.low)
             
 
+def setup_env(split_obs=False):
+    mt10 = metaworld.MT10(seed=SEED) 
+    training_envs = []
+    names = []
+    render = True
+    for name, env_cls in mt10.train_classes.items():
+        if render:
+            env = env_cls()
+            render = False
+        else:
+            env = env_cls()
+        task = random.choice([task for task in mt10.train_tasks
+                            if task.env_name == name])
+        env.set_task(task)
+        training_envs.append(env)
+        names.append(name)
+    env = MultiTaskEnv(training_envs, env_names=names, split_obs=split_obs)
+    _ = env.reset()
+    return env, names
+
+def train_moe_attention_sac(env, num_tasks, num_experts, names, epochs=50):
+    at_sac(lambda: env, num_experts=num_experts, num_tasks=num_tasks, actor_critic=mt_core.MoEActorCritic, ac_kwargs=dict(), 
+    gamma=0.99, seed=SEED, epochs=50)
+
+    print(env.rewards)
+
+    # Plot reward graphs for each environment
+    for i, rewards in enumerate(env.rewards):
+        plt.figure()
+        plt.plot(rewards)
+        plt.title(f"Rewards for Environment {i}")
+        plt.xlabel("Episodes")
+        plt.ylabel("Rewards")
+        plt.grid()
+        plt.savefig(f'mt_images/{names[i]}_mt_sac_baseline.png')
+
+
 start = time.time()
 
 SEED = 0
-mt10 = metaworld.MT10(seed=SEED) 
 
-training_envs = []
-names = []
-
-render = True
-
-for name, env_cls in mt10.train_classes.items():
-    if render:
-        env = env_cls()
-        render = False
-    else:
-        env = env_cls()
-    task = random.choice([task for task in mt10.train_tasks
-                        if task.env_name == name])
-    env.set_task(task)
-    training_envs.append(env)
-    names.append(name)
-
-
-# env = MultiTaskEnv(training_envs, names)
-
-# model = SAC("MlpPolicy", env, verbose=1)
-# model.learn(total_timesteps=TIMESTEPS, log_interval=4)
-
-# train spinningup sac on the environments
-
-env = MultiTaskEnv(training_envs, names)
-obs = env.reset()
+print('setting up environment...')
+env, names = setup_env(split_obs=True)
 
 print('training...')
+
+train_moe_attention_sac(env, num_tasks=10, num_experts=3, names=names, epochs=50)
 sac(lambda: env, actor_critic=core.MLPActorCritic, ac_kwargs=dict(hidden_sizes=[256, 256]), 
     gamma=0.99, seed=SEED, epochs=50)
-
-names = env.get_env_names()
-print(env.rewards)
-
-# Plot reward graphs for each environment
-for i, rewards in enumerate(env.rewards):
-    plt.figure()
-    plt.plot(rewards)
-    plt.title(f"Rewards for Environment {i}")
-    plt.xlabel("Episodes")
-    plt.ylabel("Rewards")
-    plt.grid()
-    plt.savefig(f'images/{names[i]}_sac_baseline.png')
-
-
-obs = env.reset()
-
-
-
 
 print(f'{time.time() - start} seconds since start')
 
