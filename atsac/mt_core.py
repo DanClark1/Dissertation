@@ -7,6 +7,22 @@ import torch.nn.functional as F
 from torch.distributions.normal import Normal
 
 
+
+
+def format_obs(o, num_tasks):
+        '''
+        Extracts the one-hot encoding from the observation vector,
+        identifies the task and returns the observation vector
+        without the one-hot encoding
+
+        :param o: observation vector
+        :param num_tasks: number of tasks
+        :return: observation vector without the one-hot encoding
+        '''
+        task = np.argmax(o[...,-num_tasks:], axis=-1)
+
+        return o[..., :-num_tasks], task
+
 def combined_shape(length, shape=None):
     if shape is None:
         return (length,)
@@ -30,6 +46,10 @@ class SquashedGaussianMoEActor(nn.Module):
 
     def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit):
         super().__init__()
+
+        self.num_tasks = num_tasks
+        obs_dim = obs_dim - num_tasks # removing one hot vector
+
         self.backbone = mlp([obs_dim] + list(backbone_hidden_sizes), activation, activation)
 
         # expert networks
@@ -49,7 +69,9 @@ class SquashedGaussianMoEActor(nn.Module):
         self.log_std_layer = mlp([expert_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
         self.act_limit = act_limit
 
-    def forward(self, obs, task, deterministic=False, with_logprob=True):
+    def forward(self, obs, deterministic=False, with_logprob=True):
+
+        obs, task = format_obs(obs, self.num_tasks)
     
         # if obs is a single observation, add a batch dimension
         if obs.dim() == 1:
@@ -108,13 +130,26 @@ class SquashedGaussianMoEActor(nn.Module):
         pi_action = torch.tanh(pi_action)
         pi_action = self.act_limit * pi_action
 
-        return pi_action, logp_pi
+        # extra loss term to encourage expert utilisation
+        eps = torch.ones_like(attention_weights)/(1e6)
+        reg_loss_term = - 1/self.num_experts * \
+                        self.mu*(torch.sum(attention_weights + eps))
+
+        return pi_action, logp_pi, reg_loss_term
 
 
 class MoEQFunction(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation):
+    def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, mu=0.01, writer=None):
         super().__init__()
+
+        self.mu = mu
+
+        self.num_tasks = num_tasks
+
+        obs_dim = obs_dim - num_tasks # removing one hot vector from obs space
+
+
         # for attention to work these dimensions need to match
         task_queries_dim = expert_hidden_sizes[-1]
 
@@ -137,7 +172,9 @@ class MoEQFunction(nn.Module):
         self.tower = mlp([expert_hidden_sizes[-1]] + list(backbone_hidden_sizes) + [1], activation=activation)
 
 
-    def forward(self, obs, task, act):
+    def forward(self, obs, act):
+         
+        obs, task = format_obs(obs, self.num_tasks)
 
         backbone_output = self.backbone(torch.cat([obs, act], dim=-1))
 
@@ -166,14 +203,19 @@ class MoEQFunction(nn.Module):
         # pass through tower network
         q = self.tower(tower_input)
         
-        return torch.squeeze(q, -1) # Critical to ensure q has right shape.
+        # extra loss term to encourage expert utilisation
+        eps = torch.ones_like(attention_weights)/(1e6)
+        reg_loss_term = - 1/self.num_experts * \
+                        self.mu*(torch.sum(attention_weights + eps))
+        
+        return torch.squeeze(q, -1), reg_loss_term # Critical to ensure q has right shape.
 
 class MoEActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, num_tasks, num_experts, backbone_hidden_sizes=(256,256), 
                  actor_hidden_sizes=(256, 256),
                  expert_hidden_sizes=(400,400),
-                 activation=nn.ReLU):
+                 activation=nn.ReLU, writer=None):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
@@ -182,10 +224,10 @@ class MoEActorCritic(nn.Module):
 
         # build policy and value functions
         self.pi = SquashedGaussianMoEActor(obs_dim, act_dim, actor_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit)
-        self.q1 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation)
-        self.q2 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation)
+        self.q1 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, writer=writer)
+        self.q2 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, writer=writer)
 
     def act(self, obs, task, deterministic=False):
         with torch.no_grad():
-            a, _ = self.pi(obs, task, deterministic, False)
+            a, _ = self.pi(obs, deterministic, False)
             return a.numpy()

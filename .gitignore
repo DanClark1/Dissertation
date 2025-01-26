@@ -4,6 +4,12 @@ venv/
 .env/
 
 
+# ignore media folders
+videos/
+mt_images/
+models/
+logs/
+
 images/
 
 # Ignore Python cache files

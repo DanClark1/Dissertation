@@ -8,15 +8,30 @@ import time
 from sac.sac import sac
 import sac.core as core
 import atsac.mt_core as mt_core
-from atsac.mt_sac import at_sac
+from atsac.oop_mt_sac import MT_SAC
+import torch
+import imageio
 
 TIMESTEPS = 1000000
 
+
+def format_obs(o, num_tasks=10):
+        '''
+        Extracts the one-hot encoding from the observation vector,
+        identifies the task and returns the observation vector
+        without the one-hot encoding
+
+        :param o: observation vector
+        :param num_tasks: number of tasks
+        :return: observation vector without the one-hot encoding
+        '''
+        task = np.argmax(o[...,-num_tasks:], axis=-1)
+
+        return o[..., :-num_tasks], task
+
 # Define a custom environment wrapper to include the one-hot task encoding
 class MultiTaskEnv(gym.Env):
-    def __init__(self, env_list, split_obs=False, env_names=None):
-        '''
-        split_obs just determines whether to include the one hot vector in the observation space size'''
+    def __init__(self, env_list, env_names=None):
         super().__init__()
         self.num_envs = len(env_list)
         self.envs = env_list
@@ -25,20 +40,13 @@ class MultiTaskEnv(gym.Env):
         # observation space is max and min of all envs (not sure if this is the same for each anyway?)
         # and then the one hot vector on the end
         self.set_max_min_obs()
+        
+        self.observation_space = gym.spaces.Box(
+            low=np.concatenate([self.obs_min, np.zeros(self.num_envs)]),
+            high=np.concatenate([self.obs_max, np.ones(self.num_envs)]),
+            dtype=np.float64
+        )
 
-        if not split_obs:
-            self.observation_space = gym.spaces.Box(
-                low=np.concatenate([self.obs_min, np.zeros(self.num_envs)]),
-                high=np.concatenate([self.obs_max, np.ones(self.num_envs)]),
-                dtype=np.float64
-            )
-        else:
-            # ignore one hot vector
-            self.observation_space = gym.spaces.Box(
-                low=np.concatenate([self.obs_min]),
-                high=np.concatenate([self.obs_max]),
-                dtype=np.float64
-            )
 
         self.action_space = self.envs[0].action_space # assume all envs have the same action space
 
@@ -83,6 +91,12 @@ class MultiTaskEnv(gym.Env):
         self.active_index = random.randint(0, len(self.envs) - 1)
         self.active_env = self.envs[self.active_index]
 
+    def render(self):
+        self.active_env.render_mode = 'rgb_array'
+        frame = self.active_env.render()
+        self.active_env.render_mode = None
+        return frame
+
 
     def step(self, action):
         obs, reward, terminated, truncated, info, *kwargs = self.active_env.step(action)
@@ -119,7 +133,7 @@ class MultiTaskEnv(gym.Env):
                     self.obs_min = np.minimum(self.obs_min, self.envs[i].observation_space.low)
             
 
-def setup_env(split_obs=False):
+def setup_env():
     mt10 = metaworld.MT10(seed=SEED) 
     training_envs = []
     names = []
@@ -135,13 +149,15 @@ def setup_env(split_obs=False):
         env.set_task(task)
         training_envs.append(env)
         names.append(name)
-    env = MultiTaskEnv(training_envs, env_names=names, split_obs=split_obs)
+    env = MultiTaskEnv(training_envs, env_names=names)
     _ = env.reset()
     return env, names
 
 def train_moe_attention_sac(env, num_tasks, num_experts, names, epochs=50):
-    at_sac(lambda: env, num_experts=num_experts, num_tasks=num_tasks, actor_critic=mt_core.MoEActorCritic, ac_kwargs=dict(), 
+    model = MT_SAC(lambda: env, num_experts=num_experts, num_tasks=num_tasks, actor_critic=mt_core.MoEActorCritic, ac_kwargs=dict(), 
     gamma=0.99, seed=SEED, epochs=50)
+
+    model.train()
 
     print(env.rewards)
 
@@ -161,13 +177,31 @@ start = time.time()
 SEED = 0
 
 print('setting up environment...')
-env, names = setup_env(split_obs=True)
+env, names = setup_env()
 
 print('training...')
 
-train_moe_attention_sac(env, num_tasks=10, num_experts=3, names=names, epochs=50)
-sac(lambda: env, actor_critic=core.MLPActorCritic, ac_kwargs=dict(hidden_sizes=[256, 256]), 
-    gamma=0.99, seed=SEED, epochs=50)
+# train_moe_attention_sac(env, num_tasks=10, num_experts=3, names=names, epochs=50)
+# sac(lambda: env, actor_critic=core.MLPActorCritic, ac_kwargs=dict(hidden_sizes=[256, 256]), 
+#     gamma=0.99, seed=SEED, epochs=50)
+
+
+
+attention_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=mt_core.MoEActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
+    gamma=0.99, seed=SEED, timesteps=10000, start_steps=3000, model_name='attention_moe_sac',
+    lr=0.0003)
+
+
+regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
+    gamma=0.99, seed=SEED, timesteps=1000000, model_name='regular_sac')
+
+
+
+attention_model.train()
+attention_model.create_video()
+
+
+
 
 print(f'{time.time() - start} seconds since start')
 

@@ -8,6 +8,7 @@ import time
 import atsac.mt_core as core
 from tqdm import tqdm
 
+
 class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for SAC agents.
@@ -202,6 +203,8 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
     # Gymnasium reset: we ignore the "info" part here
     o, info = env.reset()
     ep_ret, ep_len = 0, 0
+    torch.save(ac.state_dict(), f'models/model.pt')
+
 
     for t in tqdm(range(total_steps)):
         
@@ -249,6 +252,12 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
             epoch = (t+1) // steps_per_epoch
             # Test agent
             test_agent()
+
+            # Save model
+            if (epoch % save_freq == 0) or (epoch == epochs):
+                torch.save(ac.state_dict(), f'models/model.pt')
+
+    
 
 
 if __name__ == '__main__':

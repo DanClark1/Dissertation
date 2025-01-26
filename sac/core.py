@@ -64,7 +64,7 @@ class SquashedGaussianMLPActor(nn.Module):
         pi_action = torch.tanh(pi_action)
         pi_action = self.act_limit * pi_action
 
-        return pi_action, logp_pi
+        return pi_action, logp_pi, torch.tensor(0)
 
 
 class MLPQFunction(nn.Module):
@@ -75,12 +75,12 @@ class MLPQFunction(nn.Module):
 
     def forward(self, obs, act):
         q = self.q(torch.cat([obs, act], dim=-1))
-        return torch.squeeze(q, -1) # Critical to ensure q has right shape.
+        return torch.squeeze(q, -1), torch.tensor(0) # Critical to ensure q has right shape.
 
 class MLPActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
-                 activation=nn.ReLU):
+                 activation=nn.ReLU, writer=None):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
