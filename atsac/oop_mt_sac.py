@@ -127,20 +127,20 @@ class MT_SAC:
     def compute_loss_q(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
-        q1 = self.ac.q1(o, a)
-        q2 = self.ac.q2(o, a)
+        q1, reg_term_q1 = self.ac.q1(o, a)
+        q2, reg_term_q2 = self.ac.q2(o, a)
 
         with torch.no_grad():
             # Target actions come from *current* policy
-            a2, logp_a2 = self.ac.pi(o2)
+            a2, logp_a2, _ = self.ac.pi(o2)
             # Target Q-values
-            q1_pi_targ = self.ac_targ.q1(o2, a2)
-            q2_pi_targ = self.ac_targ.q2(o2, a2)
+            q1_pi_targ, _ = self.ac_targ.q1(o2, a2)
+            q2_pi_targ, _ = self.ac_targ.q2(o2, a2)
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
             backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
 
-        loss_q1 = ((q1 - backup)**2).mean()
-        loss_q2 = ((q2 - backup)**2).mean()
+        loss_q1 = ((q1 - backup)**2).mean() + reg_term_q1.mean()
+        loss_q2 = ((q2 - backup)**2).mean() + reg_term_q2.mean()
         loss_q = loss_q1 + loss_q2
 
         q_info = dict(Q1Vals=q1.detach().numpy(),
@@ -152,13 +152,13 @@ class MT_SAC:
 
     def compute_loss_pi(self, data):
         o = data['obs']
-        pi, logp_pi = self.ac.pi(o)
-        q1_pi = self.ac.q1(o, pi)
-        q2_pi = self.ac.q2(o, pi)
+        pi, logp_pi, reg_term = self.ac.pi(o)
+        q1_pi, _ = self.ac.q1(o, pi)
+        q2_pi, _ = self.ac.q2(o, pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
-        loss_pi = (self.alpha * logp_pi - q_pi).mean()
+        loss_pi = (self.alpha * logp_pi - q_pi).mean() + reg_term.mean()
 
         pi_info = dict(LogPi=logp_pi.detach().numpy())
         self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
@@ -194,7 +194,8 @@ class MT_SAC:
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
     def get_action(self, o, deterministic=False):
-        return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+        action, *_ = self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+        return action
 
     def test_agent(self, episodes=None, render=False):
         if render:  

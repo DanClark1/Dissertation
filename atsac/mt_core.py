@@ -44,10 +44,12 @@ LOG_STD_MIN = -20
 
 class SquashedGaussianMoEActor(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit):
+    def __init__(self, obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit, mu=0.01):
         super().__init__()
-
+        self.mu = mu
         self.num_tasks = num_tasks
+
+        self.num_experts = num_experts
         obs_dim = obs_dim - num_tasks # removing one hot vector
 
         self.backbone = mlp([obs_dim] + list(backbone_hidden_sizes), activation, activation)
@@ -146,6 +148,7 @@ class MoEQFunction(nn.Module):
         self.mu = mu
 
         self.num_tasks = num_tasks
+        self.num_experts = num_experts
 
         obs_dim = obs_dim - num_tasks # removing one hot vector from obs space
 
@@ -229,5 +232,5 @@ class MoEActorCritic(nn.Module):
 
     def act(self, obs, task, deterministic=False):
         with torch.no_grad():
-            a, _ = self.pi(obs, deterministic, False)
+            a, *_ = self.pi(obs, deterministic, False)
             return a.numpy()
