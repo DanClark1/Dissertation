@@ -8,7 +8,6 @@ from torch.distributions.normal import Normal
 
 
 
-
 def format_obs(o, num_tasks):
         '''
         Extracts the one-hot encoding from the observation vector,
@@ -67,8 +66,8 @@ class SquashedGaussianMoEActor(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts,task_queries_dim, expert_hidden_sizes[-1]))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, expert_hidden_sizes[-1]))
 
-        self.mu_layer = mlp([expert_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
-        self.log_std_layer = mlp([expert_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
+        self.mu_layer = mlp([backbone_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
+        self.log_std_layer = mlp([backbone_hidden_sizes[-1]] + [backbone_hidden_sizes[0]] + [act_dim], activation=activation)
         self.act_limit = act_limit
 
     def forward(self, obs, deterministic=False, with_logprob=True):
@@ -82,31 +81,31 @@ class SquashedGaussianMoEActor(nn.Module):
 
         backbone_output = self.backbone(obs)
 
-        # Define a function to forward pass through each expert
-        def expert_forward(expert, input_tensor):
-            return expert(input_tensor)
+        # # Define a function to forward pass through each expert
+        # def expert_forward(expert, input_tensor):
+        #     return expert(input_tensor)
 
-        # Parallelize the expert outputs
-        futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
+        # # Parallelize the expert outputs
+        # futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
 
-        # Gather the results
-        expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
+        # # Gather the results
+        # expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
 
-        # compute values and keys
-        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
-        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
+        # # compute values and keys
+        # expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
+        # expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
 
-        # compute attention weights
-        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+        # # compute attention weights
+        # attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
 
-        attention_weights = torch.softmax(attention_scores, dim=-1)
+        # attention_weights = torch.softmax(attention_scores, dim=-1)
 
-        # summing together each expert scaled by attention weights
-        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
+        # # summing together each expert scaled by attention weights
+        # tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
 
-        mu = self.mu_layer(tower_input)
-        log_std = self.log_std_layer(tower_input)
+        mu = self.mu_layer(backbone_output)
+        log_std = self.log_std_layer(backbone_output)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
 
@@ -132,12 +131,12 @@ class SquashedGaussianMoEActor(nn.Module):
         pi_action = torch.tanh(pi_action)
         pi_action = self.act_limit * pi_action
 
-        # extra loss term to encourage expert utilisation
-        eps = torch.ones_like(attention_weights)/(1e6)
-        reg_loss_term = - 1/self.num_experts * \
-                        self.mu*(torch.sum(attention_weights + eps))
+        # # extra loss term to encourage expert utilisation
+        # eps = torch.ones_like(attention_weights)/(1e6)
+        # reg_loss_term = - 1/self.num_experts * \
+        #                 self.mu*(torch.sum(attention_weights + eps))
 
-        return pi_action, logp_pi, reg_loss_term
+        return pi_action, logp_pi, None
 
 
 class MoEQFunction(nn.Module):
@@ -172,7 +171,7 @@ class MoEQFunction(nn.Module):
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, expert_hidden_sizes[-1]))
 
         # tower network (just assuming its the same dimensions as the backbone network)
-        self.tower = mlp([expert_hidden_sizes[-1]] + list(backbone_hidden_sizes) + [1], activation=activation)
+        self.tower = mlp([backbone_hidden_sizes[-1]] + list(backbone_hidden_sizes) + [1], activation=activation)
 
 
     def forward(self, obs, act):
@@ -181,39 +180,39 @@ class MoEQFunction(nn.Module):
 
         backbone_output = self.backbone(torch.cat([obs, act], dim=-1))
 
-        # Define a function to forward pass through each expert
-        def expert_forward(expert, input_tensor):
-            return expert(input_tensor)
+        # # Define a function to forward pass through each expert
+        # def expert_forward(expert, input_tensor):
+        #     return expert(input_tensor)
 
-        # Parallelize the expert outputs
-        futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
+        # # Parallelize the expert outputs
+        # futures = [torch.jit.fork(expert_forward, expert, backbone_output) for expert in self.experts]
 
-        # Gather the results
-        expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
+        # # Gather the results
+        # expert_outputs = torch.stack([torch.jit.wait(future) for future in futures], dim=1)
 
-        # compute values and keys
-        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
-        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
+        # # compute values and keys
+        # expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
+        # expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
 
-        # compute attention weights
-        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+        # # compute attention weights
+        # attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
 
-        attention_weights = torch.softmax(attention_scores, dim=-1)
+        # attention_weights = torch.softmax(attention_scores, dim=-1)
 
-        # summing together each expert scaled by attention weights
-        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
+        # # summing together each expert scaled by attention weights
+        # tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
         # pass through tower network
-        q = self.tower(tower_input)
+        q = self.tower(backbone_output)
         
         # extra loss term to encourage expert utilisation
-        eps = torch.ones_like(attention_weights)/(1e6)
-        reg_loss_term = - 1/self.num_experts * \
-                        self.mu*(torch.sum(attention_weights + eps))
+        # eps = torch.ones_like(attention_weights)/(1e6)
+        # reg_loss_term = - 1/self.num_experts * \
+        #                 self.mu*(torch.sum(attention_weights + eps))
         
-        return torch.squeeze(q, -1), reg_loss_term # Critical to ensure q has right shape.
+        return torch.squeeze(q, -1), None # Critical to ensure q has right shape.
 
-class MoEActorCritic(nn.Module):
+class EActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, num_tasks, num_experts, backbone_hidden_sizes=(256,256), 
                  actor_hidden_sizes=(256, 256),

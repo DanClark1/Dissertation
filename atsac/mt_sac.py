@@ -5,8 +5,14 @@ import torch
 from torch.optim import Adam
 import gymnasium as gym
 import time
-import atsac.mt_core as core
+import atsac.no_expert_moe_core as attention_core
+import sac.core as core
 from tqdm import tqdm
+import imageio
+from torch.utils.tensorboard import SummaryWriter
+
+
+
 
 
 class ReplayBuffer:
@@ -15,9 +21,9 @@ class ReplayBuffer:
     """
 
     def __init__(self, obs_dim, act_dim, size):
-        self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
+        self.obs_buf = np.zeros(attention_core.combined_shape(size, obs_dim), dtype=np.float32)
+        self.obs2_buf = np.zeros(attention_core.combined_shape(size, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros(attention_core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
@@ -40,12 +46,8 @@ class ReplayBuffer:
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
-
-def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_kwargs=dict(), seed=0, 
-        steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
-        update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
-        logger_kwargs=dict(), save_freq=1):
+    
+class MT_SAC:
     """
     Soft Actor-Critic (SAC), Gymnasium Version
 
@@ -56,208 +58,272 @@ def at_sac(env_fn, num_tasks, num_experts, actor_critic=core.MoEActorCritic, ac_
             - Combine (terminated or truncated) into a single `done` to store in replay
     """
 
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    def __init__(self, env_fn, num_tasks, num_experts, actor_critic=attention_core.MoEActorCritic, ac_kwargs=dict(), seed=0, 
+        timesteps=10000, replay_size=int(1e6), gamma=0.99, 
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
+        update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
+        logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model'):
 
-    # Create both train and test envs
-    env = env_fn()
-    test_env = env_fn()
+        self.num_tasks = num_tasks
+        self.num_experts = num_experts
+        self.video_save_location = video_save_location + model_name + '.mp4'
+        self.model_save_path = model_save_path + model_name + '.pt'
+        self.seed = seed
+        self.timesteps = timesteps
+        self.replay_size = replay_size
+        self.gamma = gamma
+        self.polyak = polyak
+        self.alpha = alpha
+        self.batch_size = batch_size
+        self.start_steps = start_steps
+        self.update_after = update_after
+        self.update_every = update_every
+        self.num_test_episodes = num_test_episodes
+        self.max_ep_len = max_ep_len
+        self.save_freq = save_freq
 
-    # Get observation and action dimensions
-    obs_dim = env.observation_space.shape
-    act_dim = env.action_space.shape[0]
+        self.writer = SummaryWriter(f'logs/{model_name}')
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
 
-    # Action limit for clamping: assumes all dimensions share the same bound!
-    act_limit = env.action_space.high[0]
+        # Create both train and test envs
+        self.env = env_fn()
+        self.test_env = env_fn()
 
-    # Create actor-critic module and target networks
-    ac = actor_critic(env.observation_space, env.action_space, num_tasks, num_experts,  **ac_kwargs)
-    ac_targ = deepcopy(ac)
+        # Get observation and action dimensions
+        self.obs_dim = self.env.observation_space.shape
+        self.act_dim = self.env.action_space.shape[0]
 
-    # Freeze target networks (only update via polyak averaging)
-    for p in ac_targ.parameters():
-        p.requires_grad = False
-        
-    # Combine Q-net parameters
-    q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters())
+        # Action limit for clamping: assumes all dimensions share the same bound!
+        self.act_limit = self.env.action_space.high[0]
 
-    # Experience buffer
-    replay_obs_dim = list(obs_dim)
-    replay_obs_dim[-1] = replay_obs_dim[-1] + num_tasks
-    replay_buffer = ReplayBuffer(obs_dim=tuple(replay_obs_dim), act_dim=act_dim, size=replay_size)
+        # Create actor-critic module and target networks
+        self.ac = actor_critic(self.env.observation_space, self.env.action_space, writer=self.writer, **ac_kwargs)
+        self.ac_targ = deepcopy(self.ac)
 
-    # Count variables
-    var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
+        # Freeze target networks (only update via polyak averaging)
+        for p in self.ac_targ.parameters():
+            p.requires_grad = False
+            
+        # Combine Q-net parameters
+        self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
 
-    def compute_loss_q(data):
+        # Experience buffer
+        self.replay_buffer = ReplayBuffer(obs_dim=list(self.obs_dim), act_dim=self.act_dim, size=replay_size)
+
+        # Count variables
+        self.var_counts = tuple(attention_core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
+
+        # Set up optimizers
+        self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=lr)
+        self.q_optimizer = Adam(self.q_params, lr=lr)
+
+    def compute_loss_q(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
-        o_trunc, task = format_obs(o, num_tasks)
-        o2_trunc, _ = format_obs(o2, num_tasks) # task shouldn't change
 
-        q1 = ac.q1(o_trunc, task, a)
-        q2 = ac.q2(o_trunc, task, a)
+        q1, reg_term_q1 = self.ac.q1(o, a)
+        q2, reg_term_q2 = self.ac.q2(o, a)
 
         with torch.no_grad():
             # Target actions come from *current* policy
-            a2, logp_a2 = ac.pi(o2_trunc, task)
+            a2, logp_a2, _ = self.ac.pi(o2)
             # Target Q-values
-            q1_pi_targ = ac_targ.q1(o2_trunc, task, a2)
-            q2_pi_targ = ac_targ.q2(o2_trunc, task, a2)
+            q1_pi_targ, _ = self.ac_targ.q1(o2, a2)
+            q2_pi_targ, _ = self.ac_targ.q2(o2, a2)
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r + gamma * (1 - d) * (q_pi_targ - alpha * logp_a2)
+            backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
 
         loss_q1 = ((q1 - backup)**2).mean()
         loss_q2 = ((q2 - backup)**2).mean()
+
+
+        # expert balancing regularisation
+        if reg_term_q1 is not None:
+            reg_term_mean_q1 = reg_term_q1.mean()
+            reg_term_mean_q2 = reg_term_q2.mean()
+            self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
+            self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
+            loss_q1 += reg_term_mean_q1
+            loss_q2 += reg_term_mean_q2
+
+
         loss_q = loss_q1 + loss_q2
 
         q_info = dict(Q1Vals=q1.detach().numpy(),
                       Q2Vals=q2.detach().numpy())
+        
+        self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
+        self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
+        self.writer.flush()
         return loss_q, q_info
 
-    def compute_loss_pi(data):
+    def compute_loss_pi(self, data):
         o = data['obs']
-        o_trunc, task = format_obs(o, num_tasks)
-        pi, logp_pi = ac.pi(o_trunc, task)
-        q1_pi = ac.q1(o_trunc, task, pi)
-        q2_pi = ac.q2(o_trunc, task, pi)
+        pi, logp_pi, reg_term = self.ac.pi(o)
+        q1_pi, _ = self.ac.q1(o, pi)
+        q2_pi, _ = self.ac.q2(o, pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
-        loss_pi = (alpha * logp_pi - q_pi).mean()
+        loss_pi = (self.alpha * logp_pi - q_pi).mean()
+
+        if reg_term is not None:
+            self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), self.timesteps)
+            loss_pi += reg_term.mean()
 
         pi_info = dict(LogPi=logp_pi.detach().numpy())
+        self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
+        self.writer.flush()
         return loss_pi, pi_info
 
-    # Set up optimizers
-    pi_optimizer = Adam(ac.pi.parameters(), lr=lr)
-    q_optimizer = Adam(q_params, lr=lr)
+    
 
-    def update(data):
+    def update(self, data):
         # Update Q-networks
-        q_optimizer.zero_grad()
-        loss_q, q_info = compute_loss_q(data)
+        self.q_optimizer.zero_grad()
+        loss_q, q_info = self.compute_loss_q(data)
         loss_q.backward()
-        q_optimizer.step()
+        self.q_optimizer.step()
 
         # Freeze Q-networks to avoid extra gradients during pi update
-        for p in q_params:
+        for p in self.q_params:
             p.requires_grad = False
 
         # Update policy (pi)
-        pi_optimizer.zero_grad()
-        loss_pi, pi_info = compute_loss_pi(data)
+        self.pi_optimizer.zero_grad()
+        loss_pi, pi_info = self.compute_loss_pi(data)
         loss_pi.backward()
-        pi_optimizer.step()
+        self.pi_optimizer.step()
 
         # Unfreeze Q-network parameters
-        for p in q_params:
+        for p in self.q_params:
             p.requires_grad = True
 
         # Finally, update target networks by polyak averaging
         with torch.no_grad():
-            for p, p_targ in zip(ac.parameters(), ac_targ.parameters()):
-                p_targ.data.mul_(polyak)
-                p_targ.data.add_((1 - polyak) * p.data)
+            for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
+                p_targ.data.mul_(self.polyak)
+                p_targ.data.add_((1 - self.polyak) * p.data)
 
-    def get_action(o, deterministic=False):
-        o_trunc, task = format_obs(o, num_tasks)
-        return ac.act(torch.as_tensor(o_trunc, dtype=torch.float32), task, deterministic)
+    def get_action(self, o, deterministic=False):
+        action = self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+        return action
+
+    def test_agent(self, episodes=None, render=False):
+        if render:  
+            frames = []
     
-    def format_obs(o, num_tasks):
-        '''
-        Extracts the one-hot encoding from the observation vector,
-        identifies the task and returns the observation vector
-        without the one-hot encoding
-
-        :param o: observation vector
-        :param num_tasks: number of tasks
-        :return: observation vector without the one-hot encoding
-        '''
-        task = np.argmax(o[...,-num_tasks:], axis=-1)
-
-        return o[..., :-num_tasks], task
-
-    def test_agent():
-        for _ in range(num_test_episodes):
+        episodes = self.num_test_episodes if episodes is None else episodes
+        for _ in range(self.num_test_episodes):
             # Gymnasium reset -> (obs, info)
-            obs, info = test_env.reset()
+            obs, info = self.test_env.reset()
             done = False
             ep_ret, ep_len = 0, 0
 
-            while not (done or (ep_len == max_ep_len)):
-                act = get_action(o, deterministic=True)
+            while not (done or (ep_len == self.max_ep_len)):
+                act = self.get_action(obs, deterministic=True)
                 act = act.squeeze()
-                obs2, r, terminated, truncated, _info = test_env.step(act)
+                obs2, r, terminated, truncated, _info = self.test_env.step(act)
                 done = terminated or truncated
                 ep_ret += r
                 ep_len += 1
                 obs = obs2
+                
+                if render and hasattr(self.env, 'render'):
+                    frame = self.env.render()
+                    frames.append(frame)
+
+        if render:
+            imageio.mimsave(self.video_save_location, frames, fps=30)
+            print("Video saved to trained_model_demo.mp4")
+
         # needs to happen for the multi-task env
         if done:
-            test_env.reset()
-
-    # Main SAC loop
-    total_steps = steps_per_epoch * epochs
-    start_time = time.time()
-
-    # Gymnasium reset: we ignore the "info" part here
-    o, info = env.reset()
-    ep_ret, ep_len = 0, 0
-    torch.save(ac.state_dict(), f'models/model.pt')
+            self.test_env.reset()
 
 
-    for t in tqdm(range(total_steps)):
+    def train(self):
+        # Main SAC loop
+        total_steps = self.timesteps
         
-        # Uniform random actions until start_steps
-        if t > start_steps:
+        policy_time = 0
+        training_time = 0
+        environment_time = 0
+        # Gymnasium reset: we ignore the "info" part here
+        o, info = self.env.reset()
+        ep_ret, ep_len = 0, 0
+        torch.save(self.ac.state_dict(), f'models/model.pt')
+
+        for t in tqdm(range(total_steps)):
             
-            a = get_action(o)
-            a = a.squeeze()
-        else:
-            a = env.action_space.sample()
+            # Uniform random actions until start_steps
+            if t > self.start_steps:
+                
+                start_time = time.time()
+                a = self.get_action(o)
+                policy_time += (time.time() - start_time)
+                a = a.squeeze()
+            else:
+                a = self.env.action_space.sample()
 
-        # Take a step in the environment (Gymnasium)
-        o2, r, terminated, truncated, info = env.step(a)
+            # Take a step in the environment (Gymnasium)
+            start_time = time.time()
+            o2, r, terminated, truncated, info = self.env.step(a)
+            environment_time += (time.time() - start_time)
 
-        done = terminated or truncated
+            done = terminated or truncated
 
-        ep_ret += r
-        ep_len += 1
+            ep_ret += r
+            ep_len += 1
 
-        # If the episode ended due to max_ep_len, we often set done=False
-        # so we don't confuse the agent about "terminal states".
-        # That is optional. For example:
-        # if ep_len == max_ep_len:
-        #     done = True  # or keep it as is, depending on preference
+            # Store experience
+            self.replay_buffer.store(o, a, r, o2, float(done))
 
-        # Store experience
-        replay_buffer.store(o, a, r, o2, float(done))
+            # Update most recent observation
+            o = o2
 
-        # Update most recent observation
-        o = o2
+            # End of trajectory handling
+            if done or (ep_len == self.max_ep_len):
+                start_time = time.time()
+                o, info = self.env.reset()
+                environment_time += (time.time() - start_time)
+                ep_ret, ep_len = 0, 0
 
-        # End of trajectory handling
-        if done or (ep_len == max_ep_len):
-            o, info = env.reset()
-            ep_ret, ep_len = 0, 0
+            # Update handling
+            if t >= self.update_after and t % self.update_every == 0:
+                for _ in range(self.update_every):
+                    batch = self.replay_buffer.sample_batch(self.batch_size)
+                    
+                    start_time = time.time()
+                    self.update(data=batch)
+                    training_time += (time.time() - start_time)
 
-        # Update handling
-        if t >= update_after and t % update_every == 0:
-            for _ in range(update_every):
-                batch = replay_buffer.sample_batch(batch_size)
-                update(data=batch)
+            # testing agent and saving the model 
+            #if (t+1) % self.save_freq == 0:
+                # Test agent
+                # self.test_agent() do we even want to do this?
+        self.save_model()
 
-        # End of epoch handling
-        if (t+1) % steps_per_epoch == 0:
-            epoch = (t+1) // steps_per_epoch
-            # Test agent
-            test_agent()
-
-            # Save model
-            if (epoch % save_freq == 0) or (epoch == epochs):
-                torch.save(ac.state_dict(), f'models/model.pt')
+        total_time = environment_time + training_time + policy_time
+        print(f'Environment time: ', environment_time/total_time * 100)
+        print(f'Policy (forward) time: ', policy_time/total_time * 100)
+        print(f'Backprop time: ', training_time/total_time * 100)
 
     
+    def save_model(self):
+        torch.save(self.ac.state_dict(), self.model_save_path)
+
+    def load_model(self):
+        self.ac.load_state_dict(torch.load(self.model_save_path, weights_only=True))
+
+    def create_video(self):
+        '''
+        Evaluates the model on the environment
+        '''
+        self.test_agent(render=True, episodes=1)
+        
+
+
 
 
 if __name__ == '__main__':
@@ -273,11 +339,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     torch.set_num_threads(torch.get_num_threads())
-
-    # Now we make the environment with Gymnasium
-    at_sac(lambda: gym.make(args.env), 
-        actor_critic=core.MoEActorCritic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), 
-        gamma=args.gamma, 
-        seed=args.seed, 
-        epochs=args.epochs)
