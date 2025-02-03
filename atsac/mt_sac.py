@@ -173,8 +173,8 @@ class MT_SAC:
 
         loss_q = loss_q1 + loss_q2
 
-        q_info = dict(Q1Vals=q1.detach().numpy(),
-                      Q2Vals=q2.detach().numpy())
+        q_info = dict(Q1Vals=q1.detach(),
+                      Q2Vals=q2.detach())
         
         if log:
             self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
@@ -196,7 +196,7 @@ class MT_SAC:
                 self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), self.timesteps)
             loss_pi += reg_term.mean()
 
-        pi_info = dict(LogPi=logp_pi.detach().numpy())
+        pi_info = dict(LogPi=logp_pi.detach())
         if log:
             self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
         return loss_pi, pi_info

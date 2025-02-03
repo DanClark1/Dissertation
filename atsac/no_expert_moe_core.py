@@ -232,4 +232,4 @@ class EActorCritic(nn.Module):
     def act(self, obs, task, deterministic=False):
         with torch.no_grad():
             a, *_ = self.pi(obs, deterministic, False)
-            return a.numpy()
+            return a
