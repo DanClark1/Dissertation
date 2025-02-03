@@ -18,7 +18,7 @@ def format_obs(o, num_tasks):
         :param num_tasks: number of tasks
         :return: observation vector without the one-hot encoding
         '''
-        task = np.argmax(o[...,-num_tasks:], axis=-1)
+        task = torch.argmax(o[...,-num_tasks:], axis=-1)
 
         return o[..., :-num_tasks], task
 
