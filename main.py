@@ -189,26 +189,19 @@ print('training...')
 
 
 attention_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=at_moe_core.MoEActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
-    gamma=0.99, seed=SEED, timesteps=1000000, start_steps=3000, model_name='attention_moe_sac_2_feb', env_names=names,
+    gamma=0.99, seed=SEED, timesteps=20000, start_steps=3000, model_name='attention_moe_sac_3_feb', env_names=names,
     lr=0.0003)
 
-test_model = attention_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_expert_moe_core.EActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
+test_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_expert_moe_core.EActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
     gamma=0.99, seed=SEED, timesteps=1000000, start_steps=3000, model_name='no_expert_moe', env_names=names,
     lr=0.0003)
 
 
 regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
-    gamma=0.99, seed=SEED, timesteps=1000000, model_name='regular_sac', env_names=names)
+    gamma=0.99, seed=SEED, timesteps=20000, model_name='regular_sac', env_names=names)
 
-regular_model.train()
-# test_model.load_model()
-# test_model.evaluate(episodes=1000)
-# test_model.create_video()
-# regular_model.load_model()
-# regular_model.evaluate(episodes=1000)
-# regular_model.create_video()
-# attention_model.train()
-# attention_model.create_video()
+
+attention_model.train()
 
 
 

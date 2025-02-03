@@ -70,7 +70,7 @@ class MT_SAC:
 
     def __init__(self, env_fn, num_tasks, num_experts, actor_critic=attention_core.MoEActorCritic, ac_kwargs=dict(), seed=0, 
         timesteps=10000, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=1024, start_steps=10000, 
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
         logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
         env_names=None):
@@ -286,7 +286,7 @@ class MT_SAC:
 
     def train(self):
         # Main SAC loop
-        total_steps = self.timesteps
+        print('timesetps: ', self.timesteps)
         
         policy_time = 0
         training_time = 0
@@ -296,7 +296,7 @@ class MT_SAC:
         ep_ret, ep_len = 0, 0
         torch.save(self.ac.state_dict(), f'models/model.pt')
 
-        for t in tqdm(range(total_steps)):
+        for t in tqdm(range(self.timesteps)):
             
             # Uniform random actions until start_steps
             if t > self.start_steps:

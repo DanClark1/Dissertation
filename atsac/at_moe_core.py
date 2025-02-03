@@ -72,16 +72,16 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([torch.jit.wait(f) for f in futures], dim=1)
 
         # Compute keys and values using einsum.
-        expert_keys = torch.einsum('bli,lij->blj', expert_outputs, self.key_matricies)
-        expert_values = torch.einsum('bli,lij->blj', expert_outputs, self.value_matricies)
+        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
+        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
         # Use the task query (indexed by the task) to compute attention scores.
         # Make sure to adjust dimensions if your task variable isn’t batch–wise.
-        attention_scores = torch.einsum('bni,ni->bn', expert_keys, self.task_queries[task])
+        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
         # Aggregate expert outputs.
-        tower_input = torch.einsum('bn,bni->bi', attention_weights, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
