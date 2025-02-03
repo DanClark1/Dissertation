@@ -138,6 +138,14 @@ class MT_SAC:
     def compute_loss_q(self, data, log=False):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
+        # if avaiable, use cuda
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        o = torch.as_tensor(o, dtype=torch.float32).to(device)
+        a = torch.as_tensor(a, dtype=torch.float32).to(device)
+        r = torch.as_tensor(r, dtype=torch.float32).to(device)
+        o2 = torch.as_tensor(o2, dtype=torch.float32).to(device)
+        d = torch.as_tensor(d, dtype=torch.float32).to(device)
+
         q1, reg_term_q1 = self.ac.q1(o, a)
         q2, reg_term_q2 = self.ac.q2(o, a)
 
