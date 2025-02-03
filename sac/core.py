@@ -64,7 +64,8 @@ class SquashedGaussianMLPActor(nn.Module):
         pi_action = torch.tanh(pi_action)
         pi_action = self.act_limit * pi_action
 
-        return pi_action, logp_pi, torch.tensor(0)
+        # return 0 since we don't need epert regularisation
+        return pi_action, logp_pi, None
 
 
 class MLPQFunction(nn.Module):
@@ -75,7 +76,9 @@ class MLPQFunction(nn.Module):
 
     def forward(self, obs, act):
         q = self.q(torch.cat([obs, act], dim=-1))
-        return torch.squeeze(q, -1), torch.tensor(0) # Critical to ensure q has right shape.
+
+        # return 0 since we don't need epert regularisation
+        return torch.squeeze(q, -1), None # Critical to ensure q has right shape.
 
 class MLPActorCritic(nn.Module):
 
@@ -94,5 +97,5 @@ class MLPActorCritic(nn.Module):
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
-            a, _ = self.pi(obs, deterministic, False)
+            a, *_ = self.pi(obs, deterministic, False)
             return a.numpy()

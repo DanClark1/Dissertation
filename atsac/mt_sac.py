@@ -5,15 +5,25 @@ import torch
 from torch.optim import Adam
 import gymnasium as gym
 import time
-import atsac.no_expert_moe_core as attention_core
+import atsac.at_moe_core as attention_core
 import sac.core as core
 from tqdm import tqdm
 import imageio
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 
+def get_task(o, num_tasks):
+        '''
+        Gets the task from the observation vector
 
+        :param o: observation vector
+        :param num_tasks: number of tasks
+        :return: observation vector without the one-hot encoding
+        '''
+        task = np.argmax(o[...,-num_tasks:], axis=-1)
 
+        return task
 
 class ReplayBuffer:
     """
@@ -62,7 +72,8 @@ class MT_SAC:
         timesteps=10000, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
-        logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model'):
+        logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
+        env_names=None):
 
         self.num_tasks = num_tasks
         self.num_experts = num_experts
@@ -81,6 +92,8 @@ class MT_SAC:
         self.num_test_episodes = num_test_episodes
         self.max_ep_len = max_ep_len
         self.save_freq = save_freq
+        self.env_names=env_names
+        self.model_name = model_name
 
         self.writer = SummaryWriter(f'logs/{model_name}')
         torch.manual_seed(self.seed)
@@ -118,6 +131,7 @@ class MT_SAC:
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=lr)
         self.q_optimizer = Adam(self.q_params, lr=lr)
 
+
     def compute_loss_q(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
@@ -136,7 +150,6 @@ class MT_SAC:
         loss_q1 = ((q1 - backup)**2).mean()
         loss_q2 = ((q2 - backup)**2).mean()
 
-
         # expert balancing regularisation
         if reg_term_q1 is not None:
             reg_term_mean_q1 = reg_term_q1.mean()
@@ -145,7 +158,6 @@ class MT_SAC:
             self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
             loss_q1 += reg_term_mean_q1
             loss_q2 += reg_term_mean_q2
-
 
         loss_q = loss_q1 + loss_q2
 
@@ -205,20 +217,25 @@ class MT_SAC:
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
+
     def get_action(self, o, deterministic=False):
         action = self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
         return action
 
-    def test_agent(self, episodes=None, render=False):
+
+    def evaluate(self, episodes=None, render=False, save_plots=True):
         if render:  
             frames = []
     
         episodes = self.num_test_episodes if episodes is None else episodes
-        for _ in range(self.num_test_episodes):
+
+        rewards = [[] for _ in range(self.num_tasks)]
+        for _ in tqdm(range(episodes)):
             # Gymnasium reset -> (obs, info)
             obs, info = self.test_env.reset()
             done = False
             ep_ret, ep_len = 0, 0
+            episode_reward = 0
 
             while not (done or (ep_len == self.max_ep_len)):
                 act = self.get_action(obs, deterministic=True)
@@ -228,14 +245,39 @@ class MT_SAC:
                 ep_ret += r
                 ep_len += 1
                 obs = obs2
-                
+                episode_reward += r
+            
                 if render and hasattr(self.env, 'render'):
                     frame = self.env.render()
                     frames.append(frame)
 
+                if done:
+                    # record reward
+                    rewards[get_task(obs, self.num_tasks)].append(episode_reward)
+                    episode_reward = 0
+
+        if save_plots:
+            # Plot reward graphs for each environment
+            for i, rewards in enumerate(rewards):
+                plt.figure()
+                plt.plot(rewards)
+                plt.title(f"Rewards for Environment {i}")
+                plt.xlabel("Episodes")
+                plt.ylabel("Rewards")
+                plt.grid()
+                # check if the directory exists and if not create it
+                try:
+                    plt.savefig(f'images/{self.model_name}/{self.env_names[i]}_mt_sac_baseline.png')
+                except:
+                    import os
+                    os.makedirs(f'images/{self.model_name}')
+                    plt.savefig(f'images/{self.model_name}/{self.env_names[i]}_mt_sac_baseline.png')
+
+            plt.close()
+            
         if render:
             imageio.mimsave(self.video_save_location, frames, fps=30)
-            print("Video saved to trained_model_demo.mp4")
+            print(f"Video saved to {self.video_save_location}")
 
         # needs to happen for the multi-task env
         if done:
@@ -320,11 +362,8 @@ class MT_SAC:
         '''
         Evaluates the model on the environment
         '''
-        self.test_agent(render=True, episodes=1)
+        self.evaluate(render=True, episodes=1, save_plots=False)
         
-
-
-
 
 if __name__ == '__main__':
     import argparse
