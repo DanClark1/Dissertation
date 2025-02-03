@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def get_task(o, num_tasks):
         '''
         Gets the task from the observation vector
@@ -232,7 +233,7 @@ class MT_SAC:
 
 
     def get_action(self, o, deterministic=False):
-        action = self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+        action = self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(device), deterministic)
         return action
 
 
