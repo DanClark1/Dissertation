@@ -197,10 +197,14 @@ class MoEActorCritic(nn.Module):
         act_dim = action_space.shape[0]
         act_limit = action_space.high[0]
 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # build policy and value functions
         self.pi = SquashedGaussianMoEActor(obs_dim, act_dim, actor_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, act_limit)
         self.q1 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, writer=writer)
         self.q2 = MoEQFunction(obs_dim, act_dim, backbone_hidden_sizes, expert_hidden_sizes, num_experts, num_tasks, activation, writer=writer)
+        self.pi.to(self.device)
+        self.q1.to(self.device)
+        self.q2.to(self.device)
 
     def act(self, obs, task, deterministic=False):
         with torch.no_grad():

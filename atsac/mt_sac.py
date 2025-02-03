@@ -54,7 +54,10 @@ class ReplayBuffer:
                      act=self.act_buf[idxs],
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs])
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
+        
+        # use cuda if available
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(device) for k,v in batch.items()}
 
     
 class MT_SAC:
@@ -132,7 +135,7 @@ class MT_SAC:
         self.q_optimizer = Adam(self.q_params, lr=lr)
 
 
-    def compute_loss_q(self, data):
+    def compute_loss_q(self, data, log=False):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
         q1, reg_term_q1 = self.ac.q1(o, a)
@@ -154,8 +157,9 @@ class MT_SAC:
         if reg_term_q1 is not None:
             reg_term_mean_q1 = reg_term_q1.mean()
             reg_term_mean_q2 = reg_term_q2.mean()
-            self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
-            self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
+            if log:
+                self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
+                self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
             loss_q1 += reg_term_mean_q1
             loss_q2 += reg_term_mean_q2
 
@@ -164,12 +168,12 @@ class MT_SAC:
         q_info = dict(Q1Vals=q1.detach().numpy(),
                       Q2Vals=q2.detach().numpy())
         
-        self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
-        self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
-        self.writer.flush()
+        if log:
+            self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
+            self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
         return loss_q, q_info
 
-    def compute_loss_pi(self, data):
+    def compute_loss_pi(self, data, log=False):
         o = data['obs']
         pi, logp_pi, reg_term = self.ac.pi(o)
         q1_pi, _ = self.ac.q1(o, pi)
@@ -180,20 +184,21 @@ class MT_SAC:
         loss_pi = (self.alpha * logp_pi - q_pi).mean()
 
         if reg_term is not None:
-            self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), self.timesteps)
+            if log:
+                self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), self.timesteps)
             loss_pi += reg_term.mean()
 
         pi_info = dict(LogPi=logp_pi.detach().numpy())
-        self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
-        self.writer.flush()
+        if log:
+            self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
         return loss_pi, pi_info
 
     
 
-    def update(self, data):
+    def update(self, data, log=False):
         # Update Q-networks
         self.q_optimizer.zero_grad()
-        loss_q, q_info = self.compute_loss_q(data)
+        loss_q, q_info = self.compute_loss_q(data, log=log)
         loss_q.backward()
         self.q_optimizer.step()
 
@@ -203,7 +208,7 @@ class MT_SAC:
 
         # Update policy (pi)
         self.pi_optimizer.zero_grad()
-        loss_pi, pi_info = self.compute_loss_pi(data)
+        loss_pi, pi_info = self.compute_loss_pi(data, log=log)
         loss_pi.backward()
         self.pi_optimizer.step()
 
@@ -337,7 +342,7 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    self.update(data=batch)
+                    self.update(data=batch, log=(self.timesteps % 10000000 == 0))
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 
