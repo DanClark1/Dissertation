@@ -6,9 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.normal import Normal
 
-
-
-
 def format_obs(o, num_tasks):
         '''
         Extracts the one-hot encoding from the observation vector,

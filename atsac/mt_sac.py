@@ -12,6 +12,8 @@ import imageio
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import datetime
+import pickle
+import os
 
 # probably a better way to do without global variables but i cant be bothered
 log_step = 0
@@ -373,10 +375,10 @@ class MT_SAC:
                     
                     training_time += (time.time() - start_time)
 
-            # testing agent and saving the model 
-            #if (t+1) % self.save_freq == 0:
-                # Test agent
-                # self.test_agent() do we even want to do this?
+                # testing agent and saving the model 
+                if (t+1) % self.save_freq == 0:
+                    self.save_model(temp=True)
+
         self.save_model()
 
         total_time = environment_time + training_time + policy_time
@@ -385,11 +387,36 @@ class MT_SAC:
         print(f'Backprop time: ', training_time/total_time * 100)
 
     
-    def save_model(self):
-        torch.save(self.ac.state_dict(), self.model_save_path)
+    def save_model(self, temp=False):
+        checkpoint = {
+            'model_state_dict': self.ac.state_dict(),
+            'replay_buffer': pickle.dumps(self.replay_buffer),  # Serialize replay buffer
+            'pi_optimizer_state_dict': self.pi_optimizer.state_dict(),
+            'q_optimizer_state_dict': self.q_optimizer.state_dict(),
+            'timesteps': self.timesteps  # Optionally include timesteps if needed
+        }
+        
+        # call it temp if we want to save a temporary model
+        if temp:
+            os.makedirs(os.path.dirname(self.model_save_path + '_temp'), exist_ok=True)
+            torch.save(checkpoint, self.model_save_path + '_temp')
+            return
+
+
+        os.makedirs(os.path.dirname(self.model_save_path), exist_ok=True)
+        torch.save(checkpoint, self.model_save_path)
 
     def load_model(self):
-        self.ac.load_state_dict(torch.load(self.model_save_path, weights_only=True))
+        checkpoint = torch.load(self.model_save_path)
+
+        self.ac.load_state_dict(checkpoint['model_state_dict'])
+
+        self.replay_buffer = pickle.loads(checkpoint['replay_buffer'])
+
+        self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer_state_dict'])
+        self.q_optimizer.load_state_dict(checkpoint['q_optimizer_state_dict'])
+
+        print("Model and replay buffer loaded successfully")
 
     def create_video(self):
         '''
