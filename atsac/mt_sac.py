@@ -93,7 +93,7 @@ class MT_SAC:
         self.gamma = gamma
         self.polyak = polyak
         self.alpha = alpha
-        self.batch_size = batch_size
+        self.batch_size = batch_size * num_tasks
         self.start_steps = start_steps
         self.update_after = update_after
         self.update_every = update_every
