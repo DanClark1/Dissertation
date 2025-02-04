@@ -185,7 +185,6 @@ class MT_SAC:
                       Q2Vals=q2.detach())
         
         if log:
-            print('logging')
             self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
             self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
         return loss_q, q_info
@@ -260,7 +259,7 @@ class MT_SAC:
             episode_reward = 0
 
             while not (done or (ep_len == self.max_ep_len)):
-                act = self.get_action(obs, deterministic=True)
+                act = self.get_action(obs, deterministic=True).cpu().numpy()
                 act = act.squeeze()
                 obs2, r, terminated, truncated, _info = self.test_env.step(act)
                 done = terminated or truncated
@@ -307,8 +306,6 @@ class MT_SAC:
 
 
     def train(self):
-        # log every 1000 updates
-        LOG_EVERY = 1000
         # Main SAC loop
         print('timesetps: ', self.timesteps)
         
@@ -367,7 +364,9 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    self.update(data=batch, log=False)
+                    # log every 1% of the timesteps
+                    log = (t % (self.timesteps / 100) == 0)
+                    self.update(data=batch, log=log)
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 
