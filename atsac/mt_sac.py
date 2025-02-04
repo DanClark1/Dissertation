@@ -316,7 +316,7 @@ class MT_SAC:
             if t > self.start_steps:
                 
                 start_time = time.time()
-                a = self.get_action(o)
+                a = self.get_action(o).cpu()
                 policy_time += (time.time() - start_time)
                 a = a.squeeze()
             else:

@@ -12,6 +12,7 @@ import atsac.at_moe_core as at_moe_core
 from atsac.mt_sac import MT_SAC
 import torch
 import imageio
+import argparse
 
 TIMESTEPS = 1000000
 
@@ -189,7 +190,7 @@ print('training...')
 
 
 attention_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=at_moe_core.MoEActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
-    gamma=0.99, seed=SEED, timesteps=20000, start_steps=3000, model_name='attention_moe_sac_3_feb', env_names=names,
+    gamma=0.99, seed=SEED, timesteps=1000000, start_steps=3000, model_name='attention_moe_sac_3_feb', env_names=names,
     lr=0.0003)
 
 test_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_expert_moe_core.EActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
@@ -198,11 +199,35 @@ test_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_ex
 
 
 regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
-    gamma=0.99, seed=SEED, timesteps=20000, model_name='regular_sac', env_names=names)
+    gamma=0.99, seed=SEED, timesteps=1000000, model_name='regular_sac', env_names=names)
 
 
-attention_model.train()
+parser = argparse.ArgumentParser(description="Train different SAC models.")
+parser.add_argument("--model", choices=["a", "t", "r"], default="a", help="Choose which model to train.")
+parser.add_argument("--graphs", action="store_true", help="Generate reward graphs after training.")
+parser.add_argument("--videos", action="store_true", help="Generate a recording of the policy after training.")
+args = parser.parse_args()
 
+if args.model == "a":
+    attention_model.train()
+    if args.graphs:
+        attention_model.evaluate()
+    if args.videos:
+        attention_model.create_video()
+
+elif args.model == "t":
+    test_model.train()
+    if args.graphs:
+        test_model.evaluate()
+    if args.videos:
+        test_model.create_video()
+
+elif args.model == "r":
+    regular_model.train()
+    if args.graphs:
+        test_model.evaluate()
+    if args.videos:
+        test_model.create_video()
 
 
 
