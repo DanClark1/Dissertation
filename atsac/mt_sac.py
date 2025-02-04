@@ -13,6 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import datetime
 
+# probably a better way to do without global variables but i cant be bothered
+log_step = 0
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def get_task(o, num_tasks):
@@ -140,7 +142,7 @@ class MT_SAC:
         self.q_optimizer = Adam(self.q_params, lr=lr)
 
 
-    def compute_loss_q(self, data, log=False):
+    def compute_loss_q(self, data, timestep, log=False):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
         # if avaiable, use cuda
@@ -171,8 +173,8 @@ class MT_SAC:
             reg_term_mean_q1 = reg_term_q1.mean()
             reg_term_mean_q2 = reg_term_q2.mean()
             if log:
-                self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
-                self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
+                self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, timestep)
+                self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, timestep)
             loss_q1 += reg_term_mean_q1
             loss_q2 += reg_term_mean_q2
 
@@ -182,11 +184,11 @@ class MT_SAC:
                       Q2Vals=q2.detach())
         
         if log:
-            self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
-            self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
+            self.writer.add_scalar('Loss/Q1', loss_q1, timestep)
+            self.writer.add_scalar('Loss/Q2', loss_q2, timestep)
         return loss_q, q_info
 
-    def compute_loss_pi(self, data, log=False):
+    def compute_loss_pi(self, data, timestep, log=False):
         o = data['obs']
         pi, logp_pi, reg_term = self.ac.pi(o)
         q1_pi, _ = self.ac.q1(o, pi)
@@ -198,20 +200,20 @@ class MT_SAC:
 
         if reg_term is not None:
             if log:
-                self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), self.timesteps)
+                self.writer.add_scalar('ExpertUtil/pi', reg_term.mean(), timestep)
             loss_pi += reg_term.mean()
 
         pi_info = dict(LogPi=logp_pi.detach())
         if log:
-            self.writer.add_scalar('Loss/Pi', loss_pi, self.timesteps)
+            self.writer.add_scalar('Loss/Pi', loss_pi, timestep)
         return loss_pi, pi_info
 
     
 
-    def update(self, data, log=False):
+    def update(self, data, timestep, log=False):
         # Update Q-networks
         self.q_optimizer.zero_grad()
-        loss_q, q_info = self.compute_loss_q(data, log=log)
+        loss_q, q_info = self.compute_loss_q(data, timestep, log=log)
         loss_q.backward()
         self.q_optimizer.step()
 
@@ -221,7 +223,7 @@ class MT_SAC:
 
         # Update policy (pi)
         self.pi_optimizer.zero_grad()
-        loss_pi, pi_info = self.compute_loss_pi(data, log=log)
+        loss_pi, pi_info = self.compute_loss_pi(data, timestep, log=log)
         loss_pi.backward()
         self.pi_optimizer.step()
 
@@ -303,6 +305,7 @@ class MT_SAC:
 
 
     def train(self):
+        log_step = 0
         # Main SAC loop
         print('timesetps: ', self.timesteps)
         
@@ -361,11 +364,13 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    # log every 1% of the timesteps
+                    # log every 2% of the timesteps
                     log = (t % (self.timesteps / 2000) == 0 and _ == 0)
+                    self.update(t, data=batch, log=log)
                     if log:
                         print(f'Logging at timestep {t} out of {self.timesteps}')
-                    self.update(data=batch, log=log)
+                        log_step += 1
+                    
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 
