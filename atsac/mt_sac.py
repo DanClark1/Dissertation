@@ -79,8 +79,6 @@ class MT_SAC:
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
         logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
         env_names=None):
-        update_after = 0
-        start_steps = 0
         self.num_tasks = num_tasks
         self.num_experts = num_experts
         self.video_save_location = video_save_location + model_name + '.mp4'
