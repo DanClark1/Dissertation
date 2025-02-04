@@ -325,8 +325,7 @@ class MT_SAC:
         for t in tqdm(range(self.timesteps)):
             
             # Uniform random actions until start_steps
-            if t > self.start_steps:
-                
+            if t > self.start_steps:  
                 start_time = time.time()
                 a = self.get_action(o).cpu().numpy()
                 policy_time += (time.time() - start_time)
@@ -363,7 +362,7 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    self.update(data=batch, log=(self.timesteps % 100 == 0))
+                    self.update(data=batch, log=(self.timesteps % 10000 == 0))
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 
