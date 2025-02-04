@@ -173,7 +173,6 @@ class MT_SAC:
             reg_term_mean_q1 = reg_term_q1.mean()
             reg_term_mean_q2 = reg_term_q2.mean()
             if log:
-                print('logging')
                 self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
                 self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
             loss_q1 += reg_term_mean_q1
@@ -365,7 +364,9 @@ class MT_SAC:
                     
                     start_time = time.time()
                     # log every 1% of the timesteps
-                    log = (t % (self.timesteps / 100) == 0)
+                    log = (t % (self.timesteps / 2000) == 0 and _ == 0)
+                    if log:
+                        print(f'Logging at timestep {t} out of {self.timesteps}')
                     self.update(data=batch, log=log)
                     training_time += (time.time() - start_time)
 
