@@ -370,6 +370,7 @@ class MT_SAC:
                     log = (t % (self.timesteps / 2000) == 0 and _ == 0)
                     self.update(t, data=batch, log=log)
                     if log:
+                        self.writer.add_scalar('Reward', ep_ret, t)
                         print(f'Logging at timestep {t} out of {self.timesteps}')
                         log_step += 1
                     
@@ -377,6 +378,7 @@ class MT_SAC:
 
                 # testing agent and saving the model 
                 if (t+1) % self.save_freq == 0:
+                    print(f'Saving model at timestep {t}')
                     self.save_model(temp=True)
 
         self.save_model()
