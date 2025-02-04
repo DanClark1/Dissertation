@@ -79,7 +79,8 @@ class MT_SAC:
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
         logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
         env_names=None):
-
+        update_after = 0
+        start_steps = 0
         self.num_tasks = num_tasks
         self.num_experts = num_experts
         self.video_save_location = video_save_location + model_name + '.mp4'
@@ -306,6 +307,8 @@ class MT_SAC:
 
 
     def train(self):
+        # log every 1000 updates
+        LOG_EVERY = 1000
         # Main SAC loop
         print('timesetps: ', self.timesteps)
         
@@ -364,7 +367,7 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    self.update(data=batch, log=(self.timesteps % 10000 == 0))
+                    self.update(data=batch, log=False)
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 
