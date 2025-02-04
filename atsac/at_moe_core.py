@@ -85,7 +85,7 @@ class MoELayer(nn.Module):
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
-        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps))
+        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, axis=-1))
         return tower_input, reg_loss_term
 
 
