@@ -89,11 +89,15 @@ class MLPActorCritic(nn.Module):
         obs_dim = observation_space.shape[0]
         act_dim = action_space.shape[0]
         act_limit = action_space.high[0]
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # build policy and value functions
         self.pi = SquashedGaussianMLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit)
         self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        self.pi.to(self.device)
+        self.q1.to(self.device)
+        self.q2.to(self.device)
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
