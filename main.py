@@ -3,7 +3,6 @@ import random
 import numpy as np
 import gymnasium as gym
 import matplotlib.pyplot as plt
-from stable_baselines3 import SAC
 import time
 from sac.sac import sac
 import sac.core as core
