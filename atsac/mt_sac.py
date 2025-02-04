@@ -308,7 +308,14 @@ class MT_SAC:
         # Gymnasium reset: we ignore the "info" part here
         o, info = self.env.reset()
         ep_ret, ep_len = 0, 0
-        torch.save(self.ac.state_dict(), f'models/model.pt')
+
+        # check if directory exists and if not create it
+        try:
+            torch.save(self.ac.state_dict(), f'models/model.pt')
+        except:
+            import os
+            os.makedirs('models')
+            torch.save(self.ac.state_dict(), f'models/model.pt')
 
         for t in tqdm(range(self.timesteps)):
             
@@ -316,7 +323,7 @@ class MT_SAC:
             if t > self.start_steps:
                 
                 start_time = time.time()
-                a = self.get_action(o).cpu()
+                a = self.get_action(o).cpu().numpy()
                 policy_time += (time.time() - start_time)
                 a = a.squeeze()
             else:
