@@ -102,4 +102,4 @@ class MLPActorCritic(nn.Module):
     def act(self, obs, deterministic=False):
         with torch.no_grad():
             a, *_ = self.pi(obs, deterministic, False)
-            return a.numpy()
+            return a
