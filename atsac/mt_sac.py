@@ -172,6 +172,7 @@ class MT_SAC:
             reg_term_mean_q1 = reg_term_q1.mean()
             reg_term_mean_q2 = reg_term_q2.mean()
             if log:
+                print('logging')
                 self.writer.add_scalar('ExpertUtil/Q1', reg_term_mean_q1, self.timesteps)
                 self.writer.add_scalar('ExpertUtil/Q2', reg_term_mean_q2, self.timesteps)
             loss_q1 += reg_term_mean_q1
@@ -183,6 +184,7 @@ class MT_SAC:
                       Q2Vals=q2.detach())
         
         if log:
+            print('logging')
             self.writer.add_scalar('Loss/Q1', loss_q1, self.timesteps)
             self.writer.add_scalar('Loss/Q2', loss_q2, self.timesteps)
         return loss_q, q_info
