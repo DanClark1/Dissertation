@@ -210,7 +210,7 @@ class MT_SAC:
 
     
 
-    def update(self, data, timestep, log=False):
+    def update(self, timestep, data, log=False):
         # Update Q-networks
         self.q_optimizer.zero_grad()
         loss_q, q_info = self.compute_loss_q(data, timestep, log=log)
