@@ -11,6 +11,7 @@ from tqdm import tqdm
 import imageio
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+import datetime
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -99,7 +100,11 @@ class MT_SAC:
         self.env_names=env_names
         self.model_name = model_name
 
-        self.writer = SummaryWriter(f'logs/{model_name}')
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        self.writer = SummaryWriter(f'logs/{self.model_name}_{current_time}')
+
+        
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
 
@@ -358,7 +363,7 @@ class MT_SAC:
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     
                     start_time = time.time()
-                    self.update(data=batch, log=(self.timesteps % 10000000 == 0))
+                    self.update(data=batch, log=(self.timesteps % 100 == 0))
                     training_time += (time.time() - start_time)
 
             # testing agent and saving the model 

@@ -187,27 +187,18 @@ print('training...')
 #     gamma=0.99, seed=SEED, epochs=50)
 
 
-
-attention_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=at_moe_core.MoEActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
-    gamma=0.99, seed=SEED, timesteps=1000000, start_steps=3000, model_name='attention_moe_sac_3_feb', env_names=names,
-    lr=0.0003)
-
-test_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_expert_moe_core.EActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
-    gamma=0.99, seed=SEED, timesteps=1000000, start_steps=3000, model_name='no_expert_moe', env_names=names,
-    lr=0.0003)
-
-
-regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
-    gamma=0.99, seed=SEED, timesteps=1000000, model_name='regular_sac', env_names=names)
-
-
 parser = argparse.ArgumentParser(description="Train different SAC models.")
 parser.add_argument("--model", choices=["a", "t", "r"], default="a", help="Choose which model to train.")
 parser.add_argument("--graphs", action="store_true", help="Generate reward graphs after training.")
 parser.add_argument("--videos", action="store_true", help="Generate a recording of the policy after training.")
+parser.add_argument("--timesteps", type=int, default=TIMESTEPS, help="Number of timesteps to train for.")
+parser.add_argument("--start_timesteps", type=int, default=3000, help="Number of timesteps to start training after.")
 args = parser.parse_args()
 
 if args.model == "a":
+    attention_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=at_moe_core.MoEActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
+    gamma=0.99, seed=SEED, timesteps=args.timesteps, start_steps=args.start_timesteps, model_name='attention_moe_sac', env_names=names,
+    lr=0.0003)
     attention_model.train()
     if args.graphs:
         attention_model.evaluate()
@@ -215,6 +206,9 @@ if args.model == "a":
         attention_model.create_video()
 
 elif args.model == "t":
+    test_model = MT_SAC(lambda: env, num_experts=1, num_tasks=10, actor_critic=no_expert_moe_core.EActorCritic, ac_kwargs=dict(num_tasks=10, num_experts=3), 
+    gamma=0.99, seed=SEED, timesteps=args.timesteps, start_steps=args.start_timesteps, model_name='no_expert_moe', env_names=names,
+    lr=0.0003)
     test_model.train()
     if args.graphs:
         test_model.evaluate()
@@ -222,11 +216,13 @@ elif args.model == "t":
         test_model.create_video()
 
 elif args.model == "r":
+    regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
+    gamma=0.99, seed=SEED, timesteps=args.timesteps, start_steps=args.start_timesteps, model_name='regular_sac', env_names=names)
     regular_model.train()
     if args.graphs:
-        test_model.evaluate()
+        regular_model.evaluate()
     if args.videos:
-        test_model.create_video()
+        regular_model.create_video()
 
 
 
