@@ -32,7 +32,7 @@ Thumbs.db
 
 
 normal_sac/checkpoints/
-normal_sac/runs
+normal_sac/runs/
 
 moe_sac/checkpoints/
-moe_sac/runs
+moe_sac/runs/
