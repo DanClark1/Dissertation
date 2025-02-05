@@ -29,3 +29,10 @@ Thumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+
+normal_sac/checkpoints/
+normal_sac/runs
+
+moe_sac/checkpoints/
+moe_sac/runs
