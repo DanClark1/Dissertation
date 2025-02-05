@@ -81,7 +81,7 @@ class MT_SAC:
         timesteps=10000, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=128, start_steps=10000, 
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
-        logger_kwargs=dict(), save_freq=1000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
+        logger_kwargs=dict(), save_freq=10000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
         env_names=None):
         self.num_tasks = num_tasks
         self.num_experts = num_experts
@@ -102,6 +102,9 @@ class MT_SAC:
         self.save_freq = save_freq
         self.env_names=env_names
         self.model_name = model_name
+
+        # for loading in from a saved state
+        self.loaded_timesteps = None
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -310,6 +313,8 @@ class MT_SAC:
         log_step = 0
         # Main SAC loop
         print('timesetps: ', self.timesteps)
+        if self.loaded_timesteps is not None:
+            self.timesteps -= self.loaded_timesteps
         
         policy_time = 0
         training_time = 0
@@ -376,10 +381,10 @@ class MT_SAC:
                     
                     training_time += (time.time() - start_time)
 
-                # testing agent and saving the model 
-                if (t+1) % self.save_freq == 0:
-                    print(f'Saving model at timestep {t}')
-                    self.save_model(temp=True)
+            # testing agent and saving the model 
+            if (t+1) % self.save_freq == 0:
+                print(f'Saving model at timestep {t}')
+                self.save_model(temp=True)
 
         self.save_model()
 
@@ -390,36 +395,14 @@ class MT_SAC:
 
     
     def save_model(self, temp=False):
-        checkpoint = {
-            'model_state_dict': self.ac.state_dict(),
-            'replay_buffer': pickle.dumps(self.replay_buffer),  # Serialize replay buffer
-            'pi_optimizer_state_dict': self.pi_optimizer.state_dict(),
-            'q_optimizer_state_dict': self.q_optimizer.state_dict(),
-            'timesteps': self.timesteps  # Optionally include timesteps if needed
-        }
-        
-        # call it temp if we want to save a temporary model
-        if temp:
-            os.makedirs(os.path.dirname(self.model_save_path + '_temp'), exist_ok=True)
-            torch.save(checkpoint, self.model_save_path + '_temp')
-            return
+        '''Save the model to the model_save_path'''
+        torch.save(self.ac.state_dict(), self.model_save_path)
 
-
-        os.makedirs(os.path.dirname(self.model_save_path), exist_ok=True)
-        torch.save(checkpoint, self.model_save_path)
 
     def load_model(self):
-        checkpoint = torch.load(self.model_save_path)
-
-        self.ac.load_state_dict(checkpoint['model_state_dict'])
-
-        self.replay_buffer = pickle.loads(checkpoint['replay_buffer'])
-
-        self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer_state_dict'])
-        self.q_optimizer.load_state_dict(checkpoint['q_optimizer_state_dict'])
-
-        print("Model and replay buffer loaded successfully")
-
+        '''Load the model from the model_save_path'''
+        self.ac.load_state_dict(torch.load(self.model_save_path))
+        
     def create_video(self):
         '''
         Evaluates the model on the environment
