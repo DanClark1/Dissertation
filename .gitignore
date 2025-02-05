@@ -3,6 +3,7 @@ venv/
 .venv/
 .env/
 
+*.prof
 
 # ignore media folders
 videos/

@@ -80,7 +80,7 @@ class MT_SAC:
     def __init__(self, env_fn, num_tasks, num_experts, actor_critic=attention_core.MoEActorCritic, ac_kwargs=dict(), seed=0, 
         timesteps=10000, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=128, start_steps=10000, 
-        update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
+        update_after=1000, update_every=50, num_test_episodes=100, max_ep_len=1000, 
         logger_kwargs=dict(), save_freq=10000, model_save_path=f'models/', video_save_location='videos/', model_name='my_model',
         env_names=None):
         self.num_tasks = num_tasks
@@ -407,7 +407,7 @@ class MT_SAC:
         '''
         Evaluates the model on the environment
         '''
-        self.evaluate(render=True, episodes=1, save_plots=False)
+        self.evaluate(render=True, episodes=10, save_plots=False)
         
 
 if __name__ == '__main__':

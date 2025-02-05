@@ -218,7 +218,7 @@ elif args.model == "t":
 elif args.model == "r":
     regular_model = MT_SAC(lambda: env, num_experts=3, num_tasks=10, actor_critic=core.MLPActorCritic, 
     gamma=0.99, seed=SEED, timesteps=args.timesteps, start_steps=args.start_timesteps, model_name='regular_sac', env_names=names)
-    regular_model.train()
+    regular_model.load_model()
     if args.graphs:
         regular_model.evaluate()
     if args.videos:

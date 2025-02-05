@@ -24,6 +24,7 @@ def format_obs(o, num_tasks=10):
 
         return o[..., :-num_tasks], task
 
+
 # Define a custom environment wrapper to include the one-hot task encoding
 class MultiTaskEnv(gym.Env):
     def __init__(self, env_list, env_names=None):
@@ -128,7 +129,7 @@ class MultiTaskEnv(gym.Env):
                     self.obs_min = np.minimum(self.obs_min, self.envs[i].observation_space.low)
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
-parser.add_argument('--env-name', default="",
+parser.add_argument('--env-name', default="HalfCheetah-v2",
                     help='Mujoco Gym environment (default: HalfCheetah-v2)')
 parser.add_argument('--policy', default="Gaussian",
                     help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
@@ -273,9 +274,5 @@ for i_episode in itertools.count(1):
         print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
         print("----------------------------------------")
 
-
-# save model
-current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-agent.save_checkpoint("", ckpt_path=f"checkpoints/sac_checkpoint_{current_time}_".format(args.env_name, ""))
 env.close()
 
