@@ -1,0 +1,8 @@
+metaworld @ git+https://github.com/Farama-Foundation/Metaworld.git@cca35cff0ec62f1a18b11440de6b09e2d10a1380
+matplotlib
+gym
+gymnasium
+mujoco
+mujoco-py
+numpy
+tensorboard
