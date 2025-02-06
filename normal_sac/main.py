@@ -5,10 +5,13 @@ import numpy as np
 import itertools
 import torch
 from sac import SAC
+from mt_sac import MT_SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import random
 import metaworld
+import imageio
+from PIL import Image, ImageDraw
 
 def format_obs(o, num_tasks=10):
         '''
@@ -46,13 +49,20 @@ class MultiTaskEnv(gym.Env):
         self.action_space = self.envs[0].action_space # assume all envs have the same action space
 
         self.current_episode_rewards = 0
+        self.active_index = 0
         self.rewards = [[] for i in self.envs]
         # initialise a random environment
         self.sample_active_env()
 
         self.has_reward_been_recorded = False
 
-    def reset(self, **kwargs):
+    def get_active_env_name(self):
+        '''
+        Returns the name of the active environment
+        '''
+        return self.env_names[self.active_index]
+
+    def reset(self, randomise=True, **kwargs):
         '''
         Resets the current the environment, 
         then resamples another random environemt
@@ -66,7 +76,7 @@ class MultiTaskEnv(gym.Env):
 
         self.active_env.reset(**kwargs)
         # resample
-        self.sample_active_env()
+        self.sample_active_env(randomise)
         obs = self.active_env.reset(**kwargs)
 
         self.has_reward_been_recorded = False
@@ -79,11 +89,15 @@ class MultiTaskEnv(gym.Env):
         names if they have been set'''
         return self.env_names
     
-    def sample_active_env(self):
+    def sample_active_env(self, randomise=True):
         '''
         Randomly set an active environment
         '''
-        self.active_index = random.randint(0, len(self.envs) - 1)
+        if not randomise:
+            self.active_index += 1
+            self.active_index %= len(self.envs)
+        else:
+            self.active_index = random.randint(0, len(self.envs) - 1)
         self.active_env = self.envs[self.active_index]
 
     def render(self):
@@ -163,119 +177,173 @@ parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
                     help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
+parser.add_argument('--use_moe', type=bool, default=False, metavar='N', help='use MOE (default: False)')
 args = parser.parse_args()
 
-# Environment
-# env = NormalizedActions(gym.make(args.env_name))
-mt10 = metaworld.MT10(seed=args.seed) 
-training_envs = []
-names = []
-render = True
-for name, env_cls in mt10.train_classes.items():
-    if render:
-        env = env_cls()
-        render = False
-    else:
-        env = env_cls()
-    task = random.choice([task for task in mt10.train_tasks
-                        if task.env_name == name])
-    env.set_task(task)
-    training_envs.append(env)
-    names.append(name)
-env = MultiTaskEnv(training_envs, env_names=names)
 
-
-
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
-
-# Agent
-agent = SAC(env.observation_space.shape[0], env.action_space, args)
-
-#Tesnorboard
-writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
-                                                             args.policy, "autotune" if args.automatic_entropy_tuning else ""))
-
-# Memory
-memory = ReplayMemory(args.replay_size, args.seed)
-
-# Training Loop
-total_numsteps = 0
-updates = 0
-
-for i_episode in itertools.count(1):
-    episode_reward = 0
-    episode_steps = 0
-    done = False
-    state = env.reset()
-    while not done:
-        if args.start_steps > total_numsteps:
-            action = env.action_space.sample()  # Sample random action
+def train():
+    # Environment
+    # env = NormalizedActions(gym.make(args.env_name))
+    mt10 = metaworld.MT10(seed=args.seed) 
+    training_envs = []
+    names = []
+    render = True
+    for name, env_cls in mt10.train_classes.items():
+        if render:
+            env = env_cls()
+            render = False
         else:
-            action = agent.select_action(state)  # Sample action from policy
-
-        if len(memory) > args.batch_size:
-            # Number of updates per step in environment
-            for i in range(args.updates_per_step):
-                # Update parameters of all the networks
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
-
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                writer.add_scalar('loss/policy', policy_loss, updates)
-                writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                updates += 1
-
-        next_state, reward, terminated, truncated, *_ = env.step(action) # Step
-        done = terminated or truncated
-        episode_steps += 1
-        total_numsteps += 1
-        episode_reward += reward
-
-        # Ignore the "done" signal if it comes from hitting the time horizon.
-        # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-        mask = float(not done)
-
-        memory.push(state, action, reward, next_state, mask) # Append transition to memory
-        
-        state = next_state
-
-    if total_numsteps > args.num_steps:
-        break
-
-    writer.add_scalar('reward/train', episode_reward, i_episode)
-    print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
-
-    if i_episode % 10 == 0 and args.eval is True:
-        avg_reward = 0.
-        episodes = 10
-        for _  in range(episodes):
-            state = env.reset()
-            episode_reward = 0
-            done = False
-            while not done:
-                action = agent.select_action(state, evaluate=True)
-
-                next_state, reward, terminated, truncated, *_ = env.step(action)
-                done = terminated or truncated
-                episode_reward += reward
-
-                state = next_state
-
-            avg_reward += episode_reward
-        avg_reward /= episodes
+            env = env_cls()
+        task = random.choice([task for task in mt10.train_tasks
+                            if task.env_name == name])
+        env.set_task(task)
+        training_envs.append(env)
+        names.append(name)
+    env = MultiTaskEnv(training_envs, env_names=names)
 
 
-        writer.add_scalar('avg_reward/test', avg_reward, i_episode)
 
-        print("----------------------------------------")
-        print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
-        print("----------------------------------------")
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
+    # Agent
+    if args.use_moe:
+        agent = MT_SAC(env.observation_space.shape[0], env.action_space, args)
+    else:
+        agent = SAC(env.observation_space.shape[0], env.action_space, args)
+
+    #Tesnorboard
+    writer = SummaryWriter('runs/{}_{}-SAC_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'moe' if args.use_moe else '',
+                                                                args.policy, "autotune" if args.automatic_entropy_tuning else ""))
+
+    print('Logging at:', 'runs/{}_{}-SAC_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), 'moe' if args.use_moe else '',
+                                                                args.policy, "autotune" if args.automatic_entropy_tuning else ""))
+    # Memory
+    memory = ReplayMemory(args.replay_size, args.seed)
+
+    # Training Loop
+    total_numsteps = 0
+    updates = 0
+
+    for i_episode in itertools.count(1):
+        episode_reward = 0
+        episode_steps = 0
+        done = False
+        state = env.reset()
+        while not done:
+            if args.start_steps > total_numsteps:
+                action = env.action_space.sample()  # Sample random action
+            else:
+                action = agent.select_action(state)  # Sample action from policy
+
+            if len(memory) > args.batch_size:
+                # Number of updates per step in environment
+                for i in range(args.updates_per_step):
+                    # Update parameters of all the networks
+                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+
+                    writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+                    writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                    writer.add_scalar('loss/policy', policy_loss, updates)
+                    writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+                    writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                    updates += 1
+
+            next_state, reward, terminated, truncated, *_ = env.step(action) # Step
+            done = terminated or truncated
+            episode_steps += 1
+            total_numsteps += 1
+            episode_reward += reward
+
+            # Ignore the "done" signal if it comes from hitting the time horizon.
+            # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
+            mask = float(not done)
+
+            memory.push(state, action, reward, next_state, mask) # Append transition to memory
+            
+            state = next_state
+
+        if total_numsteps > args.num_steps:
+            break
+
+        writer.add_scalar('reward/train', episode_reward, i_episode)
+        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+
+        if i_episode % 10 == 0 and args.eval is True:
+            avg_reward = 0.
+            episodes = 10
+            for _  in range(episodes):
+                # do this deterministically
+                state = env.reset(randomise=False)
+                episode_reward = 0
+                done = False
+                while not done:
+                    action = agent.select_action(state, evaluate=True)
+
+                    next_state, reward, terminated, truncated, *_ = env.step(action)
+                    done = terminated or truncated
+                    episode_reward += reward
+
+                    state = next_state
+
+                avg_reward += episode_reward
+            avg_reward /= episodes
 
 
-# save model
-current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-agent.save_checkpoint("", ckpt_path=f"checkpoints/sac_checkpoint_{current_time}_".format(args.env_name, ""))
-env.close()
+            writer.add_scalar('avg_reward/test', avg_reward, i_episode)
 
+            print("----------------------------------------")
+            print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
+            print("----------------------------------------")
+
+
+    # save model
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    agent.save_checkpoint("", ckpt_path=f"checkpoints/sac_checkpoint_{current_time}_".format(args.env_name, ""))
+    env.close()
+
+
+def record_agent_video(agent_filename):
+    # Set up environment just like in train
+    mt10 = metaworld.MT10(seed=args.seed)
+    training_envs = []
+    names = []
+    render_env = True
+    for name, env_cls in mt10.train_classes.items():
+        env_instance = env_cls()
+        task = random.choice([task for task in mt10.train_tasks if task.env_name == name])
+        env_instance.set_task(task)
+        training_envs.append(env_instance)
+        names.append(name)
+        if render_env:
+            render_env = False
+    
+    env = MultiTaskEnv(training_envs, env_names=names)
+    
+    # Load agent
+    agent = SAC(env.observation_space.shape[0], env.action_space, args)
+    agent.load_checkpoint(ckpt_path=agent_filename)
+    
+    # Record frames
+    frames = []
+    for _ in range(5):
+        obs = env.reset()
+        print(env.get_active_env_name())
+        done = False
+        while not done:
+            action = agent.select_action(obs, evaluate=True)
+            obs, _, term, trunc, *_ = env.step(action)
+            done = term or trunc
+            frame_img = Image.fromarray(env.render())
+            draw = ImageDraw.Draw(frame_img)
+            draw.text((10, 20), env.get_active_env_name(), fill=(255, 255, 255))
+            frames.append(np.array(frame_img))
+            frames.append(env.render())
+    
+    # Save to mp4
+    imageio.mimsave("agent_evaluation.mp4", frames, fps=30)
+    env.close()
+
+train()
+
+# record_agent_video("checkpoints/sac_final")

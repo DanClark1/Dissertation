@@ -26,3 +26,17 @@ def soft_update(target, source, tau):
 def hard_update(target, source):
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(param.data)
+
+def format_obs(o, num_tasks):
+        '''
+        Extracts the one-hot encoding from the observation vector,
+        identifies the task and returns the observation vector
+        without the one-hot encoding
+
+        :param o: observation vector
+        :param num_tasks: number of tasks
+        :return: observation vector without the one-hot encoding
+        '''
+        task = torch.argmax(o[...,-num_tasks:], axis=-1)
+
+        return o[..., :-num_tasks], task
