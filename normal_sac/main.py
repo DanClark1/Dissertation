@@ -177,7 +177,7 @@ parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
                     help='size of replay buffer (default: 10000000)')
 parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
-parser.add_argument('--use_moe', type=bool, default=False, metavar='N', help='use MOE (default: False)')
+parser.add_argument('--use_moe', action="store_true", help='use MOE (default: False)')
 args = parser.parse_args()
 
 

@@ -110,6 +110,9 @@ class QNetwork(nn.Module):
 
         self.num_tasks = num_tasks
 
+        self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks)
+        self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks)
+
         # Q1 architecture
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
@@ -132,6 +135,9 @@ class QNetwork(nn.Module):
 
     def forward(self, obs, action):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
+        x1, reg_loss_1 = self.single_moe_1(obs, task)
+        x2, reg_loss_2 = self.single_moe_2(obs, task)
+        return x1, x2, reg_loss_1 + reg_loss_2
         xu = torch.cat([obs, action], 1)
         
         x1 = F.relu(self.linear1_1(xu))
@@ -165,6 +171,8 @@ class GaussianPolicy(nn.Module):
         self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks)
 
+        self.single_moe = MoELayer(obs_size-num_tasks, hidden_dim, num_tasks)
+
 
         self.mean_linear = nn.Linear(hidden_dim, action_size)
         self.log_std_linear = nn.Linear(hidden_dim, action_size)
@@ -183,6 +191,12 @@ class GaussianPolicy(nn.Module):
 
     def forward(self, obs):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
+        x,reg_loss = self.single_moe(obs, task)
+        mean = self.mean_linear(x)
+        log_std = self.log_std_linear(x)
+        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
+        return mean, log_std, reg_loss
+        
         x = F.relu(self.linear1(obs))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
