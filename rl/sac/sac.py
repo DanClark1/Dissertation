@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from utils import soft_update, hard_update
-from model import GaussianPolicy, QNetwork, DeterministicPolicy
+from sac.model import GaussianPolicy, QNetwork, DeterministicPolicy
 
 
 class SAC(object):
@@ -48,6 +48,18 @@ class SAC(object):
         else:
             _, _, action = self.policy.sample(state)
         return action.detach().cpu().numpy()[0]
+    
+    def select_action_batch(self, states, evaluate=False):
+        # Convert the numpy array to a tensor and send to device.
+        states_tensor = torch.FloatTensor(states).to(self.device)
+    
+        if not evaluate:
+            actions, _, _ = self.policy.sample(states_tensor)
+        else:
+            _, _, actions = self.policy.sample(states_tensor)
+        # Return the full batch of actions as a numpy array.
+        return actions.detach().cpu().numpy()
+
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory

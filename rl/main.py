@@ -4,8 +4,9 @@ import gym
 import numpy as np
 import itertools
 import torch
-from sac import SAC
-from mt_sac import MT_SAC
+from sac.sac import SAC
+from mt_sac.mt_sac import MT_SAC
+from big_sac.big_sac import BIG_SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import random
@@ -14,6 +15,8 @@ import imageio
 from PIL import Image, ImageDraw
 import cProfile
 import pstats
+from stable_baselines3.common.vec_env import DummyVecEnv
+
 
 def format_obs(o, num_tasks=10):
         '''
@@ -163,11 +166,11 @@ parser.add_argument('--automatic_entropy_tuning', type=bool, default=False, meta
                     help='Automaically adjust α (default: False)')
 parser.add_argument('--seed', type=int, default=123456, metavar='N',
                     help='random seed (default: 123456)')
-parser.add_argument('--batch_size', type=int, default=256, metavar='N',
+parser.add_argument('--batch_size', type=int, default=1024, metavar='N',
                     help='batch size (default: 256)')
 parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
                     help='maximum number of steps (default: 1000000)')
-parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
+parser.add_argument('--hidden_size', type=int, default=400, metavar='N',
                     help='hidden size (default: 256)')
 parser.add_argument('--updates_per_step', type=int, default=1, metavar='N',
                     help='model updates per simulator step (default: 1)')
@@ -180,6 +183,7 @@ parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
 parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
 parser.add_argument('--use_moe', action="store_true", help='use MOE (default: False)')
+parser.add_argument('--use_big', action="store_true", help='use BIG (default: False)')
 args = parser.parse_args()
 
 
@@ -211,6 +215,8 @@ def train():
     # Agent
     if args.use_moe:
         agent = MT_SAC(env.observation_space.shape[0], env.action_space, args)
+    elif args.use_big:
+        agent = BIG_SAC(env.observation_space.shape[0], env.action_space, args)
     else:
         agent = SAC(env.observation_space.shape[0], env.action_space, args)
 
@@ -346,9 +352,7 @@ def record_agent_video(agent_filename):
     imageio.mimsave("agent_evaluation.mp4", frames, fps=30)
     env.close()
 
-cProfile.run('train()', 'profile_stats')
 
-p = pstats.Stats('profile_stats')
-p.sort_stats('cumtime').print_stats(20)
+train()
 
 # record_agent_video("checkpoints/sac_final")
