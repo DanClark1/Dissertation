@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 import utils
+import cProfile
+import pstats
 
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
@@ -52,12 +54,7 @@ class MoELayer(nn.Module):
 
     def forward(self, backbone_output, task):
 
-        # Compute expert outputs in parallel.
-        def expert_forward(expert, inp):
-            return expert(inp)
-        futures = [torch.jit.fork(expert_forward, expert, backbone_output)
-                   for expert in self.experts]
-        expert_outputs = torch.stack([torch.jit.wait(f) for f in futures], dim=1)
+        expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)

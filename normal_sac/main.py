@@ -12,6 +12,8 @@ import random
 import metaworld
 import imageio
 from PIL import Image, ImageDraw
+import cProfile
+import pstats
 
 def format_obs(o, num_tasks=10):
         '''
@@ -344,6 +346,9 @@ def record_agent_video(agent_filename):
     imageio.mimsave("agent_evaluation.mp4", frames, fps=30)
     env.close()
 
-train()
+cProfile.run('train()', 'profile_stats')
+
+p = pstats.Stats('profile_stats')
+p.sort_stats('cumtime').print_stats(20)
 
 # record_agent_video("checkpoints/sac_final")
