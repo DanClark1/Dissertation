@@ -213,6 +213,9 @@ def main():
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
+            
+        for i, name in enumerate(task_names):
+            writer.add_scalar(f'rewards/{name}', rewards[i], total_numsteps)
 
         # Optionally, handle individual environment resets.
         # Many vectorised environments auto-reset on done, but if not, you can do:
@@ -226,6 +229,30 @@ def main():
         # Logging every few steps
         if total_numsteps % (num_envs * 1000) == 0:
             print("Total Steps: {}".format(total_numsteps))
+
+        
+        if total_numsteps % 50 == 0 and args.eval is True:
+            avg_reward = 0
+            states = vector_env.reset()
+            eval_episodes = 5
+            episode_rewards = []
+            for _ in range(eval_episodes):
+                done_flags = [False] * num_envs
+                eval_obs = vector_env.reset()
+                episode_return = np.zeros(num_envs)
+                while not all(done_flags):
+                    eval_actions = agent.select_action_batch(eval_obs, evaluate=True)
+                    next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
+                    for i in range(num_envs):
+                        if not done_flags[i]:
+                            episode_return[i] += eval_rewards[i]
+                    done_flags = [done_flags[i] or eval_dones[i] for i in range(num_envs)]
+                    eval_obs = next_obs
+                episode_rewards.append(episode_return.mean())
+
+            writer.add_scalar("evaluation/average_reward", np.mean(episode_rewards), total_numsteps)
+
+
 
     # Optionally: Evaluation loop (can also be done in parallel or on a single environment)
 
