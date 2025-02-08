@@ -115,6 +115,9 @@ def main():
     
     args = parser.parse_args()
 
+    print('runs/{}_{}'.format(
+        args.run_name if args.run_name else 'SAC',
+        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
     # Set random seeds
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -147,6 +150,7 @@ def main():
     obs_dim = vector_env.observation_space.shape[0]
     action_space = vector_env.action_space  # assumed same for all environments
 
+    
     # -------------------------------
     # Instantiate the SAC (or variant) agent
     # -------------------------------
@@ -213,6 +217,8 @@ def main():
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
+
+            
             
         for i, name in enumerate(task_names):
             writer.add_scalar(f'rewards/{name}', rewards[i], total_numsteps)
@@ -229,6 +235,10 @@ def main():
         # Logging every few steps
         if total_numsteps % (num_envs * 1000) == 0:
             print("Total Steps: {}".format(total_numsteps))
+
+        # record embeddings every 5% of total steps
+        if total_numsteps % (args.num_steps // 20) == 0:
+            agent.log_embeddings(writer, total_numsteps, task_names)  
 
         
         if total_numsteps % 1000 == 0 and args.eval is True:

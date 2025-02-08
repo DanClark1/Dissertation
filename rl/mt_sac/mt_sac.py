@@ -60,6 +60,15 @@ class MT_SAC(object):
             _, _, actions, _ = self.policy.sample(states_tensor)
         # Return the full batch of actions as a numpy array.
         return actions.detach().cpu().numpy()
+    
+    def log_embeddings(self, writer, t, names):
+        actor_queries = self.policy.moe.task_queries.detach().cpu()
+        critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
+        critic_queries_2 = self.critic.moe_2.task_queries.detach().cpu()
+
+        writer.add_embedding(actor_queries, metadata=names, tag='actor_queries', global_step=t)
+        writer.add_embedding(critic_queries_1, metadata=names, tag='critic_queries_1', global_step=t)
+        writer.add_embedding(critic_queries_2, metadata=names, tag='critic_queries_2', global_step=t)
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory

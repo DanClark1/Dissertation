@@ -255,6 +255,7 @@ def train():
                     writer.add_scalar('loss/policy', policy_loss, updates)
                     writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                     writer.add_scalar('entropy_temprature/alpha', alpha, updates)
+                                      
                     updates += 1
 
             next_state, reward, terminated, truncated, *_ = env.step(action) # Step
@@ -310,6 +311,7 @@ def train():
     agent.save_checkpoint("", ckpt_path=f"checkpoints/sac_checkpoint_{current_time}_".format(args.env_name, ""))
     env.close()
 
+    
 
 def record_agent_video(agent_filename):
     # Set up environment just like in train

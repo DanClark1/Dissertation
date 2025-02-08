@@ -59,6 +59,9 @@ class SAC(object):
             _, _, actions = self.policy.sample(states_tensor)
         # Return the full batch of actions as a numpy array.
         return actions.detach().cpu().numpy()
+    
+    def log_embeddings(self, writer):
+        pass
 
 
     def update_parameters(self, memory, batch_size, updates):

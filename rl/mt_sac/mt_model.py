@@ -65,14 +65,12 @@ class MoELayer(nn.Module):
         attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
-        place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
-
         # Aggregate expert outputs.
-        tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
-        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(place_holder + eps, dim=-1))
+        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, dim=-1))
         return tower_input, reg_loss_term
 
 class ValueNetwork(nn.Module):
@@ -108,9 +106,6 @@ class QNetwork(nn.Module):
         super(QNetwork, self).__init__()
 
         self.num_tasks = num_tasks
-
-        self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks)
-        self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks)
 
         # Q1 architecture
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
