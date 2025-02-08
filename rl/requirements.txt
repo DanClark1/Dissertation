@@ -6,3 +6,4 @@ mujoco
 mujoco-py
 numpy
 tensorboard
+stable-baselines3

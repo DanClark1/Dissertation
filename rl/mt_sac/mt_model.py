@@ -65,12 +65,14 @@ class MoELayer(nn.Module):
         attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
+        place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
+
         # Aggregate expert outputs.
-        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
-        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, dim=-1))
+        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(place_holder + eps, dim=-1))
         return tower_input, reg_loss_term
 
 class ValueNetwork(nn.Module):
@@ -132,9 +134,6 @@ class QNetwork(nn.Module):
 
     def forward(self, obs, action):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
-        x1, reg_loss_1 = self.single_moe_1(obs, task)
-        x2, reg_loss_2 = self.single_moe_2(obs, task)
-        return x1, x2, reg_loss_1 + reg_loss_2
         xu = torch.cat([obs, action], 1)
         
         x1 = F.relu(self.linear1_1(xu))
@@ -188,12 +187,6 @@ class GaussianPolicy(nn.Module):
 
     def forward(self, obs):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
-        x,reg_loss = self.single_moe(obs, task)
-        mean = self.mean_linear(x)
-        log_std = self.log_std_linear(x)
-        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
-        return mean, log_std, reg_loss
-        
         x = F.relu(self.linear1(obs))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
