@@ -77,6 +77,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
     parser.add_argument('--env-name', default="",
                         help='Mujoco Gym environment (default: HalfCheetah-v2)')
+    parser.add_argument('--run_name', default="", help='Name of the run')
     parser.add_argument('--policy', default="Gaussian",
                         help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
     parser.add_argument('--eval', type=bool, default=True,
@@ -111,6 +112,7 @@ def main():
                         help='Run on CUDA (default: False)')
     parser.add_argument('--use_moe', action="store_true", help='Use MOE (default: False)')
     parser.add_argument('--use_big', action="store_true", help='Use BIG (default: False)')
+    
     args = parser.parse_args()
 
     # Set random seeds
@@ -155,11 +157,9 @@ def main():
     else:
         agent = SAC(obs_dim, action_space, args)
 
-    writer = SummaryWriter('runs/{}_{}-SAC_{}_{}'.format(
+    writer = SummaryWriter('runs/{}_{}'.format(
+        args.run_name if args.run_name else 'SAC',
         datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-        'moe' if args.use_moe else '',
-        args.policy,
-        "autotune" if args.automatic_entropy_tuning else ""
     ))
 
     print('Logging at:', 'runs/{}_{}-SAC_{}_{}'.format(
@@ -231,7 +231,7 @@ def main():
             print("Total Steps: {}".format(total_numsteps))
 
         
-        if total_numsteps % 50 == 0 and args.eval is True:
+        if total_numsteps % 1000 == 0 and args.eval is True:
             avg_reward = 0
             states = vector_env.reset()
             eval_episodes = 5
