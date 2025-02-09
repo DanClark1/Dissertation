@@ -220,8 +220,13 @@ def main():
 
             
             
-        for i, name in enumerate(task_names):
-            writer.add_scalar(f'rewards/{name}', rewards[i], total_numsteps)
+        episode_returns = [0.0] * num_envs
+
+        for i in range(num_envs):
+            episode_returns[i] += rewards[i]
+            if dones[i]:
+                writer.add_scalar(f"reward/{task_names[i]}", episode_returns[i], total_numsteps)
+                episode_returns[i] = 0.0
 
         # Optionally, handle individual environment resets.
         # Many vectorised environments auto-reset on done, but if not, you can do:
