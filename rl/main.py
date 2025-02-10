@@ -272,8 +272,6 @@ def main():
                 episode_rewards.append(episode_return.mean())
 
             writer.add_scalar("evaluation/average_reward", np.mean(episode_rewards), total_numsteps)
-            print(agent.critic.moe_1.usage)
-            print(agent.critic.moe_2.usage)
 
 
 
