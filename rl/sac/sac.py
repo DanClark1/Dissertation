@@ -60,7 +60,7 @@ class SAC(object):
         # Return the full batch of actions as a numpy array.
         return actions.detach().cpu().numpy()
     
-    def log_embeddings(self, writer):
+    def log_embeddings(self, writer, **kwargs):
         pass
 
 
