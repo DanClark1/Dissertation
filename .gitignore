@@ -4,6 +4,7 @@ venv/
 .env/
 
 *.prof
+*.png
 
 # ignore media folders
 videos/
@@ -31,10 +32,12 @@ Thumbs.db
 *.sublime-workspace
 
 
-normal_sac/checkpoints/
-normal_sac/runs/
+rl/checkpoints/
+rl/runs/
 
 moe_sac/checkpoints/
 moe_sac/runs/
 
 old_stuff/
+
+*.mp4
