@@ -146,8 +146,8 @@ class MT_SAC(object):
             self.policy.load_state_dict(checkpoint['policy_state_dict'], strict=False)
             self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
             self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'], strict=False)
-            self.critic_optim.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
+            # self.critic_optim.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+            # self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
 
             if evaluate:
                 self.policy.eval()
