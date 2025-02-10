@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import itertools
 import torch
-from sac import SAC
+from normal_sac.mt_sac import SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import random

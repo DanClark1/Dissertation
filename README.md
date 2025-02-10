@@ -1,5 +1,9 @@
-## Command to run experiment:
+## Command to run regular MoE (full gating function):
 ```cd rl```
-```python main.py --cuda --run_name=[name for tensorboard logging] --load_model=[path to model checkpoint] --num_steps=1500000 --use_moe```
+```python main.py --num_steps=[training steps] --use_moe --load_model=[path to regular_moe file] --run_name=[name of run for logging]```
 
-To load the "equal experts" model, *uncomment lines 117 and 118* in rl/mt_sac/mt_sac.py. These don't affect the experiment, but when I trained that model I'd accidentally left those lines in so they need to be in there for the pytorch dict to load. Conversely, the need to be re-commented to load the regular moe model.
+## Command to run regular MoE (full gating function):
+```cd rl```
+```python main.py --num_steps=[training steps] --use_ee_moe --load_model=[path to moe_equal_experts file] --run_name=[name of run for logging]```
+
+To train from scratch just don't include the load model parameter

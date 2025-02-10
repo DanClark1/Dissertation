@@ -15,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sac.sac import SAC
 from mt_sac.mt_sac import MT_SAC
 from big_sac.big_sac import BIG_SAC
+from equal_expert_mt_sac.mt_sac import EE_MT_SAC
 from replay_memory import ReplayMemory
 
 # Import the SubprocVecEnv wrapper from Stable Baselines3
@@ -111,6 +112,7 @@ def main():
     parser.add_argument('--cuda', action="store_true",
                         help='Run on CUDA (default: False)')
     parser.add_argument('--use_moe', action="store_true", help='Use MOE (default: False)')
+    parser.add_argument('--use_ee_moe', action="store_true", help='Use BIG (default: False)')
     parser.add_argument('--use_big', action="store_true", help='Use BIG (default: False)')
     parser.add_argument('--load_model', type=str, default="", metavar='N',)
     
@@ -156,8 +158,9 @@ def main():
     # Instantiate the SAC (or variant) agent
     # -------------------------------
     if args.use_moe:
-        
         agent = MT_SAC(obs_dim, action_space, args)
+    elif args.use_ee_moe:
+        agent = EE_MT_SAC(obs_dim, action_space, args)
     elif args.use_big:
         agent = BIG_SAC(obs_dim, action_space, args)
     else:
