@@ -52,9 +52,23 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
+    def calculate_cosine_similarity(self, expert_outputs, task):
+        batch_size, _, _ = expert_outputs.size()
+        similarity_matrices = []
+
+        for i in range(batch_size):
+            normalised = F.normalize(expert_outputs[i], p=2, dim=-1).detach()
+            similarity_matrix = torch.matmul(normalised, normalised.T)
+            row_idx, col_idx = torch.triu_indices(self.num_experts, self.num_experts, offset=1)
+            similarity_values = similarity_matrix[row_idx, col_idx]
+        
+        return torch.mean(similarity_values)
+
     def forward(self, backbone_output, task):
 
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
+
+        simlarity_value = self.calculate_cosine_similarity(expert_outputs, task)
 
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
@@ -71,7 +85,7 @@ class MoELayer(nn.Module):
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, dim=-1))
-
+        reg_loss_term = reg_loss_term + simlarity_value * self.mu
         return tower_input, reg_loss_term
 
 class ValueNetwork(nn.Module):
