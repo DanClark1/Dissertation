@@ -35,6 +35,7 @@ class MoELayer(nn.Module):
         self.mu = mu
         self.writer = writer
         self.name = name
+        self.expert_usage = [[] for _ in range(self.num_tasks)]
         self.cosine_similarities = [[] for _ in range(self.num_tasks)]
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
@@ -63,14 +64,16 @@ class MoELayer(nn.Module):
             similarity_matrix = torch.matmul(normalised, normalised.T)
             row_idx, col_idx = torch.triu_indices(self.num_experts, self.num_experts, offset=1)
             similarity_values = similarity_matrix[row_idx, col_idx]
-            self.cosine_similarities[task[i]].append(similarity_values)
+        
+        return torch.mean(similarity_values)
+        
 
     def forward(self, backbone_output, task):
         
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # store for logging
-        self.calculate_cosine_similarity(expert_outputs, task)
+        similarity_value = self.calculate_cosine_similarity(expert_outputs, task)
         
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
@@ -81,6 +84,9 @@ class MoELayer(nn.Module):
         attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
+        for weights, ind_task in zip(attention_weights, task):
+            self.expert_usage[ind_task].append(weights)
+
         # place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
 
 
@@ -90,6 +96,7 @@ class MoELayer(nn.Module):
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, dim=-1))
+        reg_loss_term += self.mu * similarity_value
         return tower_input, reg_loss_term
     
     def save_cosine_similarities(self):
@@ -97,6 +104,14 @@ class MoELayer(nn.Module):
         for i in range(self.num_tasks):
             self.cosine_similarities[i] = torch.cat(self.cosine_similarities[i], dim=0)
             self.writer.add_histogram(f'similarities/{self.name}', self.cosine_similarities[i], i)
+        
+         # shape: (num_experts, num_inputs)
+
+        for i in range(self.num_tasks):
+            usage_matrix = torch.stack(self.expert_usage[i], dim=0).T 
+            for expert_idx in range(self.num_experts):
+                self.writer.add_histogram(f'expert_usage/{self.name}_task:_{expert_idx}', usage_matrix[expert_idx], i)
+
 
 
 
