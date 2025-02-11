@@ -71,6 +71,14 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
         return env
     return _init
 
+
+def analyse_moe(agent):
+    # agent.critic.moe_1.save_cosine_similarities()
+    # agent.critic.moe_2.save_cosine_similarities()
+    agent.policy.moe.save_cosine_similarities()
+
+
+
 # -----------------------------------------------------------------------------
 # 3. Main Training Script using SubprocVecEnv
 # -----------------------------------------------------------------------------
@@ -145,6 +153,8 @@ def main():
                                seed=args.seed, rank=i)
         env_fns.append(env_fn)
 
+    for i, task in enumerate(task_names):
+        print(f"Task {i}: {task}")
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
     num_envs = vector_env.num_envs  # number of parallel environments
@@ -152,22 +162,6 @@ def main():
     # The observation space now includes the one-hot task encoding.
     obs_dim = vector_env.observation_space.shape[0]
     action_space = vector_env.action_space  # assumed same for all environments
-
-    
-    # -------------------------------
-    # Instantiate the SAC (or variant) agent
-    # -------------------------------
-    if args.use_moe:
-        agent = MT_SAC(obs_dim, action_space, args)
-    elif args.use_ee_moe:
-        agent = EE_MT_SAC(obs_dim, action_space, args)
-    elif args.use_big:
-        agent = BIG_SAC(obs_dim, action_space, args)
-    else:
-        agent = SAC(obs_dim, action_space, args)
-
-    if args.load_model:
-            agent.load_checkpoint(args.load_model)
 
     writer = SummaryWriter('runs/{}_{}'.format(
         args.run_name if args.run_name else 'SAC',
@@ -180,6 +174,23 @@ def main():
         args.policy,
         "autotune" if args.automatic_entropy_tuning else ""
     ))
+    
+    # -------------------------------
+    # Instantiate the SAC (or variant) agent
+    # -------------------------------
+    if args.use_moe:
+        agent = MT_SAC(obs_dim, action_space, args, writer=writer)
+    elif args.use_ee_moe:
+        agent = EE_MT_SAC(obs_dim, action_space, args, writer=writer)
+    elif args.use_big:
+        agent = BIG_SAC(obs_dim, action_space, args)
+    else:
+        agent = SAC(obs_dim, action_space, args)
+
+    if args.load_model:
+            agent.load_checkpoint(args.load_model)
+
+    
 
 
     memory = ReplayMemory(args.replay_size, args.seed)
@@ -272,6 +283,8 @@ def main():
                 episode_rewards.append(episode_return.mean())
 
             writer.add_scalar("evaluation/average_reward", np.mean(episode_rewards), total_numsteps)
+
+    analyse_moe(agent)
 
 
 

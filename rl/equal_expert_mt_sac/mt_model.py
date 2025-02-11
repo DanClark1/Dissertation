@@ -28,12 +28,14 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, writer=None, name=""):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
         self.mu = mu
-
+        self.writer = writer
+        self.name = name
+        self.cosine_similarities = [[] for _ in range(self.num_tasks)]
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
             nn.Sequential(
@@ -52,10 +54,25 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
-    def forward(self, backbone_output, task):
+    def calculate_cosine_similarity(self, backbone_output, task):
+        batch_size, _, _ = backbone_output.size()
+        similarity_matrices = []
 
+        for i in range(batch_size):
+            normalised = F.normalize(backbone_output[i], p=2, dim=-1).detach()
+            similarity_matrix = torch.matmul(normalised, normalised.T)
+            row_idx, col_idx = torch.triu_indices(self.num_experts, self.num_experts, offset=1)
+            similarity_values = similarity_matrix[row_idx, col_idx]
+            self.cosine_similarities[task[i]].append(similarity_values)
+
+    def forward(self, backbone_output, task):
+        
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
+
+        # store for logging
+        self.calculate_cosine_similarity(expert_outputs, task)
+        
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
@@ -67,6 +84,7 @@ class MoELayer(nn.Module):
 
         place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
 
+
         # Aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
 
@@ -74,6 +92,13 @@ class MoELayer(nn.Module):
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(place_holder + eps, dim=-1))
         return tower_input, reg_loss_term
+    
+    def save_cosine_similarities(self):
+
+        if self.writer is not None:
+            for i in range(self.num_tasks):
+                self.cosine_similarities[i] = torch.cat(self.cosine_similarities[i], dim=0)
+                self.writer.add_histogram(f'similarities/{self.name}', self.cosine_similarities[i], i)
 
 
 
@@ -106,19 +131,19 @@ class ValueNetwork(nn.Module):
 
 
 class QNetwork(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10):
+    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10, writer=None):
         super(QNetwork, self).__init__()
-
+        self.writer = writer
         self.num_tasks = num_tasks
 
-        self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks)
-        self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks)
+        self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks, writer=None, name="")
+        self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks, writer=None, name="")
 
         # Q1 architecture
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, name='Q1')
         self.linear4_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_1 = nn.Linear(hidden_dim, 1)
@@ -127,7 +152,7 @@ class QNetwork(nn.Module):
         self.linear1_2 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_2 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, name='Q2')
         self.linear4_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_2 = nn.Linear(hidden_dim, 1)
@@ -159,7 +184,7 @@ class QNetwork(nn.Module):
 
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10):
+    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10, writer=None):
         super(GaussianPolicy, self).__init__()
 
         self.num_tasks = num_tasks
@@ -167,7 +192,7 @@ class GaussianPolicy(nn.Module):
         self.linear1 = nn.Linear(obs_size-num_tasks, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, name='policy')
 
         self.single_moe = MoELayer(obs_size-num_tasks, hidden_dim, num_tasks)
 
