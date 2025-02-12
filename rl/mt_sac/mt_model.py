@@ -53,16 +53,19 @@ class MoELayer(nn.Module):
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
     def calculate_cosine_similarity(self, expert_outputs, task):
-        batch_size, _, _ = expert_outputs.size()
-        similarity_matrices = []
-
-        for i in range(batch_size):
-            normalised = F.normalize(expert_outputs[i], p=2, dim=-1).detach()
-            similarity_matrix = torch.matmul(normalised, normalised.T)
-            row_idx, col_idx = torch.triu_indices(self.num_experts, self.num_experts, offset=1)
-            similarity_values = similarity_matrix[row_idx, col_idx]
+        # expert_outputs shape: (batch_size, num_experts, hidden_size)
+        # Normalize across the hidden dimension for all samples
+        normalized = F.normalize(expert_outputs, p=2, dim=-1)  # (batch_size, num_experts, hidden_size)
         
-        return torch.mean(similarity_values)
+        # Compute pairwise cosine similarities via batched matrix multiplication
+        # Result shape: (batch_size, num_experts, num_experts)
+        sim_matrix = torch.bmm(normalized, normalized.transpose(1, 2))
+        
+        # Create a mask to select the upper-triangular (non-diagonal) entries for each sample
+        mask = torch.triu(torch.ones(self.num_experts, self.num_experts, device=expert_outputs.device), diagonal=1).bool()
+        sim_values = sim_matrix[:, mask]  # (batch_size, num_pairs)
+        
+        return sim_values.mean()
 
     def forward(self, backbone_output, task):
 
@@ -85,7 +88,7 @@ class MoELayer(nn.Module):
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(attention_weights + eps, dim=-1))
-        reg_loss_term = reg_loss_term + simlarity_value * self.mu
+        reg_loss_term = reg_loss_term + simlarity_value * self.mu * 10 # making this a bit stronger ??
         return tower_input, reg_loss_term
 
 class ValueNetwork(nn.Module):

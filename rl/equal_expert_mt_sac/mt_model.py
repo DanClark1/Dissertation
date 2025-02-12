@@ -67,7 +67,7 @@ class MoELayer(nn.Module):
 
         place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
 
-        # Aggregate expert outputs.
+        # aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
 
         # Optionally compute a regularization term.
