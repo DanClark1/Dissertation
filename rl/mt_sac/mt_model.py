@@ -71,11 +71,11 @@ class MoELayer(nn.Module):
 
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
-        simlarity_value = self.calculate_cosine_similarity(expert_outputs, task)
-
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
+
+        simlarity_value = self.calculate_cosine_similarity(expert_values, task)
 
         # Use the task query (indexed by the task) to compute attention scores.
         # Make sure to adjust dimensions if your task variable isn’t batch–wise.
