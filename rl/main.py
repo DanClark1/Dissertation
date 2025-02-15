@@ -141,9 +141,12 @@ def main():
         task = random.choice(task_candidates)
         task_names.append(name)
         # Create the environment function; 'rank' can simply be the task index here.
-        env_fn = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+        env_fn_1 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
                                seed=args.seed, rank=i)
-        env_fns.append(env_fn)
+        env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+                               seed=args.seed, rank=i)
+        env_fns.append(env_fn_1)
+        env_fns.append(env_fn_2)
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
