@@ -134,6 +134,7 @@ def main():
 
     env_fns = []
     task_names = []
+    num_parallel_envs = 0
     # For simplicity, we create one environment per task. You could add more copies if desired.
     for i, (name, env_cls) in enumerate(mt10.train_classes.items()):
         # Select a random task from the candidates for this environment
@@ -147,6 +148,7 @@ def main():
                                seed=args.seed, rank=i)
         env_fns.append(env_fn_1)
         env_fns.append(env_fn_2)
+        num_parallel_envs += 2
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
@@ -213,7 +215,7 @@ def main():
             memory.push(states[i], actions[i], rewards[i], next_states[i], mask)
 
         states = next_states
-        total_numsteps += num_envs
+        total_numsteps += num_parallel_envs
 
         # Update the agent when enough samples have been collected.
         if len(memory) > args.batch_size:
