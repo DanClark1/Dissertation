@@ -25,8 +25,6 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     return nn.Sequential(*layers)
 
 
-
-
 class MoELayer(nn.Module):
     def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01):
         super().__init__()
@@ -67,58 +65,29 @@ class MoELayer(nn.Module):
 
         place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
 
-        # aggregate expert outputs.
+        # Aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
-        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(place_holder + eps, dim=-1))
+        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
         return tower_input, reg_loss_term
 
 
-
-class ValueNetwork(nn.Module):
-    '''
-    dont think this is actually used??'''
-    def __init__(self, obs_size, hidden_dim, num_tasks=10):
-        super(ValueNetwork, self).__init__()
-
-        self.linear1 = nn.Linear(obs_size-num_tasks, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks)
-        self.linear4 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, 1)
-
-        self.apply(weights_init_)
-
-    def forward(self, obs):
-        obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
-        x = F.relu(self.linear1(obs))
-        x = F.relu(self.linear2(x))
-        x = F.relu(self.linear3(x))
-        x, reg_loss = self.moe(x, task)
-        x = F.relu(self.linear4(x))
-        x = F.relu(self.linear5(x))
-        x = self.linear6(x)
-        return x, reg_loss
-
-
 class QNetwork(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10):
+    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10, num_experts=3):
         super(QNetwork, self).__init__()
 
         self.num_tasks = num_tasks
 
-        self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks)
-        self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks)
+        # self.single_moe_1 = MoELayer(obs_size-num_tasks, 1, num_tasks)
+        # self.single_moe_2 = MoELayer(obs_size-num_tasks, 1, num_tasks)
 
         # Q1 architecture
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts)
         self.linear4_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_1 = nn.Linear(hidden_dim, 1)
@@ -127,7 +96,7 @@ class QNetwork(nn.Module):
         self.linear1_2 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_2 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts)
         self.linear4_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_2 = nn.Linear(hidden_dim, 1)
@@ -159,7 +128,7 @@ class QNetwork(nn.Module):
 
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10):
+    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10, num_experts=3):
         super(GaussianPolicy, self).__init__()
 
         self.num_tasks = num_tasks
@@ -167,10 +136,9 @@ class GaussianPolicy(nn.Module):
         self.linear1 = nn.Linear(obs_size-num_tasks, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks)
+        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts) 
 
         self.single_moe = MoELayer(obs_size-num_tasks, hidden_dim, num_tasks)
-
 
         self.mean_linear = nn.Linear(hidden_dim, action_size)
         self.log_std_linear = nn.Linear(hidden_dim, action_size)
@@ -216,46 +184,3 @@ class GaussianPolicy(nn.Module):
         self.action_scale = self.action_scale.to(device)
         self.action_bias = self.action_bias.to(device)
         return super(GaussianPolicy, self).to(device)
-
-
-class DeterministicPolicy(nn.Module):
-    '''
-    currently not implemented with moe'''
-    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
-        super(DeterministicPolicy, self).__init__()
-        self.linear1 = nn.Linear(num_inputs, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-
-        self.mean = nn.Linear(hidden_dim, num_actions)
-        self.noise = torch.Tensor(num_actions)
-
-        self.apply(weights_init_)
-
-        # action rescaling
-        if action_space is None:
-            self.action_scale = 1.
-            self.action_bias = 0.
-        else:
-            self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.)
-            self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.)
-
-    def forward(self, state):
-        x = F.relu(self.linear1(state))
-        x = F.relu(self.linear2(x))
-        mean = torch.tanh(self.mean(x)) * self.action_scale + self.action_bias
-        return mean
-
-    def sample(self, state):
-        mean = self.forward(state)
-        noise = self.noise.normal_(0., std=0.1)
-        noise = noise.clamp(-0.25, 0.25)
-        action = mean + noise
-        return action, torch.tensor(0.), mean
-
-    def to(self, device):
-        self.action_scale = self.action_scale.to(device)
-        self.action_bias = self.action_bias.to(device)
-        self.noise = self.noise.to(device)
-        return super(DeterministicPolicy, self).to(device)

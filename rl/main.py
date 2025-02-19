@@ -112,9 +112,10 @@ def main():
     parser.add_argument('--cuda', action="store_true",
                         help='Run on CUDA (default: False)')
     parser.add_argument('--use_moe', action="store_true", help='Use MOE (default: False)')
-    parser.add_argument('--use_ee_moe', action="store_true", help='Use BIG (default: False)')
+    parser.add_argument('--use_ee_moe', action="store_true", help='Use EE (default: False)')
     parser.add_argument('--use_big', action="store_true", help='Use BIG (default: False)')
     parser.add_argument('--load_model', type=str, default="", metavar='N',)
+    parser.add_argument('--do_50', action="store_true", help='Do 50 tasks (default: False)')
     
     args = parser.parse_args()
 
@@ -147,8 +148,7 @@ def main():
         env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
                                seed=args.seed, rank=i)
         env_fns.append(env_fn_1)
-        env_fns.append(env_fn_2)
-        num_parallel_envs += 2
+        num_parallel_envs += 1
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
@@ -163,9 +163,9 @@ def main():
     # Instantiate the SAC (or variant) agent
     # -------------------------------
     if args.use_moe:
-        agent = MT_SAC(obs_dim, action_space, args)
+        agent = MT_SAC(obs_dim, action_space, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.use_ee_moe:
-        agent = EE_MT_SAC(obs_dim, action_space, args)
+        agent = EE_MT_SAC(obs_dim, action_space, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.use_big:
         agent = BIG_SAC(obs_dim, action_space, args)
     else:
@@ -254,7 +254,7 @@ def main():
 
         # record embeddings every 5% of total steps
         if total_numsteps % (args.num_steps // 20) == 0:
-            agent.log_embeddings(writer, total_numsteps, task_names)  
+            agent.log_embeddings(writer, t=total_numsteps, names=task_names)  
 
         
         if total_numsteps % 1000 == 0 and args.eval is True:

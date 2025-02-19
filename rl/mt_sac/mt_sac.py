@@ -3,64 +3,22 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from utils import soft_update, hard_update
-from mt_sac.mt_model import GaussianPolicy, QNetwork, DeterministicPolicy
+from mt_sac.mt_model import GaussianPolicy, QNetwork
+from sac.sac import SAC
 
+class MT_SAC(SAC):
+    def __init__(self, num_inputs, action_space, args, num_tasks=10, num_experts=3):
+        super(MT_SAC, self).__init__(num_inputs, action_space, args)
 
-class MT_SAC(object):
-    def __init__(self, num_inputs, action_space, args):
-
-        self.gamma = args.gamma
-        self.tau = args.tau
-        self.alpha = args.alpha
-
-        self.policy_type = args.policy
-        self.target_update_interval = args.target_update_interval
-        self.automatic_entropy_tuning = args.automatic_entropy_tuning
-
-        self.device = torch.device("cuda" if args.cuda else "cpu")
-
-        self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(device=self.device)
+        self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, num_experts=num_experts).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
-        self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
+        self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, num_experts=num_experts).to(self.device)
         hard_update(self.critic_target, self.critic)
 
-        if self.policy_type == "Gaussian":
-            # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
-            if self.automatic_entropy_tuning is True:
-                self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
-                self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-                self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
-
-            self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space).to(self.device)
-            self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
-
-        else:
-            self.alpha = 0
-            self.automatic_entropy_tuning = False
-            self.policy = DeterministicPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space).to(self.device)
-            self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
-
-    def select_action(self, state, evaluate=False):
-        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        if evaluate is False:
-            action, *_ = self.policy.sample(state)
-        else:
-            _, _, action, _ = self.policy.sample(state)
-        return action.detach().cpu().numpy()[0]
-    
+        self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, num_experts=num_experts).to(self.device)
+        self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         
-    def select_action_batch(self, states, evaluate=False):
-        # Convert the numpy array to a tensor and send to device.
-        states_tensor = torch.FloatTensor(states).to(self.device)
-    
-        if not evaluate:
-            actions,*_ = self.policy.sample(states_tensor)
-        else:
-            _, _, actions, _ = self.policy.sample(states_tensor)
-        # Return the full batch of actions as a numpy array.
-        return actions.detach().cpu().numpy()
-    
     def log_embeddings(self, writer, t, names):
         actor_queries = self.policy.moe.task_queries.detach().cpu()
         critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
@@ -123,38 +81,3 @@ class MT_SAC(object):
             soft_update(self.critic_target, self.critic, self.tau)
 
         return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
-
-    # Save model parameters
-    def save_checkpoint(self, env_name, suffix="", ckpt_path=None):
-        if not os.path.exists('checkpoints/'):
-            os.makedirs('checkpoints/')
-        if ckpt_path is None:
-            ckpt_path = "checkpoints/sac_checkpoint_{}_{}".format(env_name, suffix)
-        print('Saving models to {}'.format(ckpt_path))
-        torch.save({'policy_state_dict': self.policy.state_dict(),
-                    'critic_state_dict': self.critic.state_dict(),
-                    'critic_target_state_dict': self.critic_target.state_dict(),
-                    'critic_optimizer_state_dict': self.critic_optim.state_dict(),
-                    'policy_optimizer_state_dict': self.policy_optim.state_dict()}, ckpt_path)
-
-    # Load model parameters
-    def load_checkpoint(self, ckpt_path, evaluate=False):
-        print('Loading models from {}'.format(ckpt_path))
-        if ckpt_path is not None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-            self.policy.load_state_dict(checkpoint['policy_state_dict'], strict=False)
-            self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
-            self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'], strict=False)
-            self.critic_optim.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
-
-            if evaluate:
-                self.policy.eval()
-                self.critic.eval()
-                self.critic_target.eval()
-            else:
-                self.policy.train()
-                self.critic.train()
-                self.critic_target.train()
-
