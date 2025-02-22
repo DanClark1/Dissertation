@@ -236,7 +236,6 @@ def main():
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 if args.use_moe or args.use_ee_moe:
-                    print('hey', _)
                     writer.add_scalar('loss/actor_reg_loss', _[1], updates)
                     writer.add_scalar('loss/critic_reg_loss', _[0], updates)
                     
