@@ -281,7 +281,7 @@ def main():
 
             avg_episode_rewards /= eval_episodes
             writer.add_scalar("evaluation/average_reward", np.mean(avg_rewards), total_numsteps)
-            for i in range(len(avg_episode_rewards)):
+            for i in range(len(task_names)):
                 writer.add_scalar(f"evaluation/average_reward_{task_names[i]}", avg_episode_rewards[i], total_numsteps) 
 
 
