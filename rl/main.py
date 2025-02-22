@@ -235,6 +235,7 @@ def main():
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 if args.use_moe or args.use_ee_moe:
+                    print('hey', _)
                     writer.add_scalar('loss/actor_reg_loss', _[1], updates)
                     writer.add_scalar('loss/critic_reg_loss', _[0], updates)
                     
@@ -275,7 +276,6 @@ def main():
                     done_flags = [done_flags[i] or eval_dones[i] for i in range(num_envs)]
                     eval_obs = next_obs
 
-                print(episode_return.shape)
                 avg_episode_rewards += episode_return
                 avg_rewards.append(episode_return.mean())
 
