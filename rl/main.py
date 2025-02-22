@@ -152,7 +152,8 @@ def main():
         env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
                                seed=args.seed, rank=i)
         env_fns.append(env_fn_1)
-        num_parallel_envs += 1
+        env_fns.append(env_fn_2)
+        num_parallel_envs += 2
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
