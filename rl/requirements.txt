@@ -1,4 +1,4 @@
-metaworld @ git+https://github.com/Farama-Foundation/Metaworld.git@cca35cff0ec62f1a18b11440de6b09e2d10a1380
+metaworld @ git+https://github.com/DanClark1/Metaworld.git@master#egg=metaworld
 matplotlib
 gym
 gymnasium

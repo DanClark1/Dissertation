@@ -7,9 +7,9 @@ from equal_expert_mt_sac.mt_model import GaussianPolicy, QNetwork
 from mt_sac.mt_sac import MT_SAC
 
 class EE_MT_SAC(MT_SAC):
-    def __init__(self, num_inputs, action_space, args, num_tasks=10, num_experts=3):
+    def __init__(self, num_inputs, action_space, writer, args, num_tasks=10, num_experts=3):
 
-        super(EE_MT_SAC, self).__init__(num_inputs, action_space, args, num_tasks, num_experts)
+        super(EE_MT_SAC, self).__init__(num_inputs, action_space, writer, args, num_tasks, num_experts)
 
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, num_experts=num_experts).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)

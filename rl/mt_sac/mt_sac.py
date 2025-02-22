@@ -7,8 +7,8 @@ from mt_sac.mt_model import GaussianPolicy, QNetwork
 from sac.sac import SAC
 
 class MT_SAC(SAC):
-    def __init__(self, num_inputs, action_space, args, num_tasks=10, num_experts=3):
-        super(MT_SAC, self).__init__(num_inputs, action_space, args)
+    def __init__(self, num_inputs, action_space, writer, args, num_tasks=10, num_experts=3):
+        super(MT_SAC, self).__init__(num_inputs, action_space, writer, args)
 
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size, num_experts=num_experts).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
@@ -19,14 +19,14 @@ class MT_SAC(SAC):
         self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, num_experts=num_experts).to(self.device)
         self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         
-    def log_embeddings(self, writer, t, names):
+    def log_embeddings(self, t, names):
         actor_queries = self.policy.moe.task_queries.detach().cpu()
         critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
         critic_queries_2 = self.critic.moe_2.task_queries.detach().cpu()
 
-        writer.add_embedding(actor_queries, metadata=names, tag='actor_queries', global_step=t)
-        writer.add_embedding(critic_queries_1, metadata=names, tag='critic_queries_1', global_step=t)
-        writer.add_embedding(critic_queries_2, metadata=names, tag='critic_queries_2', global_step=t)
+        self.writer.add_embedding(actor_queries, metadata=names, tag='actor_queries', global_step=t)
+        self.writer.add_embedding(critic_queries_1, metadata=names, tag='critic_queries_1', global_step=t)
+        self.writer.add_embedding(critic_queries_2, metadata=names, tag='critic_queries_2', global_step=t)
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
@@ -47,7 +47,6 @@ class MT_SAC(SAC):
         qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
         qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
         qf_loss = qf1_loss + qf2_loss + reg_loss_critic.mean() # add on moe regularisation loss
- 
         self.critic_optim.zero_grad()
         qf_loss.backward()
         self.critic_optim.step()
@@ -80,4 +79,4 @@ class MT_SAC(SAC):
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
-        return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
+        return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item(), reg_loss_critic.item(), reg_loss_pi.item()

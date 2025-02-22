@@ -10,7 +10,7 @@ import metaworld
 import imageio
 from PIL import Image, ImageDraw
 from torch.utils.tensorboard import SummaryWriter
-
+from tqdm import tqdm
 # Import your agent classes as before
 from sac.sac import SAC
 from mt_sac.mt_sac import MT_SAC
@@ -20,6 +20,8 @@ from replay_memory import ReplayMemory
 
 # Import the SubprocVecEnv wrapper from Stable Baselines3
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+import matplotlib.pyplot as plt
+
 
 # -----------------------------------------------------------------------------
 # 1. Define a Wrapper to Append One-Hot Task Encoding to Observations
@@ -97,7 +99,7 @@ def main():
                         help='Random seed (default: 123456)')
     parser.add_argument('--batch_size', type=int, default=1024, metavar='N',
                         help='Batch size (default: 1024)')
-    parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
+    parser.add_argument('--num_steps', type=int, default=1000, metavar='N',
                         help='Maximum number of steps (default: 1000001)')
     parser.add_argument('--hidden_size', type=int, default=400, metavar='N',
                         help='Hidden size (default: 400)')
@@ -111,9 +113,8 @@ def main():
                         help='Size of replay buffer (default: 1000000)')
     parser.add_argument('--cuda', action="store_true",
                         help='Run on CUDA (default: False)')
-    parser.add_argument('--use_moe', action="store_true", help='Use MOE (default: False)')
-    parser.add_argument('--use_ee_moe', action="store_true", help='Use EE (default: False)')
-    parser.add_argument('--use_big', action="store_true", help='Use BIG (default: False)')
+    parser.add_argument('--model', default="",
+                    help='Mujoco Gym environment (default: HalfCheetah-v2)')
     parser.add_argument('--load_model', type=str, default="", metavar='N',)
     parser.add_argument('--do_50', action="store_true", help='Do 50 tasks (default: False)')
     
@@ -131,7 +132,7 @@ def main():
     # Create the vectorised environments
     # -------------------------------
 
-    if args.do_50:
+    if args.do_50 and False:
         mw = metaworld.MT50(seed=args.seed)
     else:
         mw = metaworld.MT10(seed=args.seed)
@@ -140,6 +141,7 @@ def main():
     env_fns = []
     task_names = []
     num_parallel_envs = 0
+
     # For simplicity, we create one environment per task. You could add more copies if desired.
     for i, (name, env_cls) in enumerate(mw.train_classes.items()):
         # Select a random task from the candidates for this environment
@@ -156,9 +158,7 @@ def main():
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
-    # vector_env = VecMonitor(vector_env, filename='env_logs/{}_{}'.format(
-    #     args.run_name if args.run_name else 'SAC',
-    #     datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))) 
+
     num_envs = vector_env.num_envs  # number of parallel environments
 
     # The observation space now includes the one-hot task encoding.
@@ -174,23 +174,26 @@ def main():
     # -------------------------------
     # Instantiate the SAC (or variant) agent
     # -------------------------------
-    if args.use_moe:
+    if args.model == 'moe':
+        print('MOE')
         agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
-    elif args.use_ee_moe:
+    elif args.model == 'ee':
+        print('EE')
         agent = EE_MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
-    elif args.use_big:
+    elif args.model == 'big':
+        print('BIG')
         agent = BIG_SAC(obs_dim, action_space, writer, args)
     else:
+        print('SAC')
         agent = SAC(obs_dim, action_space, writer, args)
 
+
     if args.load_model:
-            agent.load_checkpoint(args.load_model)
 
+        agent.load_checkpoint('checkpoints/'+args.load_model)
+    else:
+        raise ValueError('No model specified to load')
 
-    print('Logging at:', 'runs/{}_{}'.format(
-        args.run_name if args.run_name else 'SAC',
-        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-    ))
 
 
     memory = ReplayMemory(args.replay_size, args.seed)
@@ -205,91 +208,52 @@ def main():
     states = vector_env.reset()  # shape: (num_envs, obs_dim)
 
 
-    while total_numsteps < args.num_steps:
-        # Select actions for all environments.
-        if total_numsteps < args.start_steps:
-            actions = np.array([action_space.sample() for _ in range(num_envs)])
-        else:
-            # It is assumed that your SAC agent has a method to select actions in batch.
-            actions = agent.select_action_batch(states)
 
-        # Step all environments in parallel.
-        next_states, rewards, dones, infos = vector_env.step(actions)
+    avg_reward = 0
+    states = vector_env.reset()
+    eval_episodes = 5
+    avg_rewards = []
+    avg_episode_rewards = np.zeros((num_envs,))
 
-        # Save each transition to replay memory.
-        for i in range(num_envs):
-            mask = 0.0 if dones[i] else 1.0
-            memory.push(states[i], actions[i], rewards[i], next_states[i], mask)
+    for _ in range(eval_episodes):
+        done_flags = [False] * num_envs
+        eval_obs = vector_env.reset()
+        episode_return = np.zeros(num_envs)
 
-        states = next_states
-        total_numsteps += num_parallel_envs
+        # loop until every episdode is done
+        while not all(done_flags):
+            eval_actions = agent.select_action_batch(eval_obs, evaluate=True)
+            next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
 
-        # Update the agent when enough samples have been collected.
-        if len(memory) > args.batch_size:
-            for _ in range(args.updates_per_step):
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha, *_ = agent.update_parameters(
-                    memory, args.batch_size, updates)
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                writer.add_scalar('loss/policy', policy_loss, updates)
-                writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                if args.use_moe or args.use_ee_moe:
-                    writer.add_scalar('loss/actor_reg_loss', _[1], updates)
-                    writer.add_scalar('loss/critic_reg_loss', _[0], updates)
-                    
-                updates += 1
+            for i in range(num_envs):
 
-        # Logging every few steps
-        if total_numsteps % (num_envs * 1000) == 0:
-            print("Total Steps: {}".format(total_numsteps))
+                if not done_flags[i]:
+                    episode_return[i] += eval_rewards[i]
 
-        # record embeddings every 5% of total steps
-        if total_numsteps % (args.num_steps // 20) == 0:
-            agent.log_embeddings(writer, t=total_numsteps, names=task_names)  
+            done_flags = [done_flags[i] or eval_dones[i] for i in range(num_envs)]
+            eval_obs = next_obs
 
-        
-        # evaluating agent
-        if total_numsteps % 1000 == 0 and args.eval is True:
-            avg_reward = 0
-            states = vector_env.reset()
-            eval_episodes = 5
-            avg_rewards = []
-            avg_episode_rewards = np.zeros((num_envs,))
+        avg_episode_rewards += episode_return
+        avg_rewards.append(episode_return.mean())
 
-            for _ in range(eval_episodes):
-                done_flags = [False] * num_envs
-                eval_obs = vector_env.reset()
-                episode_return = np.zeros(num_envs)
-
-                # loop until every episdode is done
-                while not all(done_flags):
-                    eval_actions = agent.select_action_batch(eval_obs, evaluate=True)
-                    next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
-
-                    for i in range(num_envs):
-
-                        if not done_flags[i]:
-                            episode_return[i] += eval_rewards[i]
-
-                    done_flags = [done_flags[i] or eval_dones[i] for i in range(num_envs)]
-                    eval_obs = next_obs
-
-                print(episode_return.shape)
-                avg_episode_rewards += episode_return
-                avg_rewards.append(episode_return.mean())
-
-            avg_episode_rewards /= eval_episodes
-            writer.add_scalar("evaluation/average_reward", np.mean(avg_rewards), total_numsteps)
-            for i in range(len(avg_episode_rewards)):
-                writer.add_scalar(f"evaluation/average_reward_{task_names[i]}", avg_episode_rewards[i], total_numsteps) 
+    avg_episode_rewards /= eval_episodes
+    # Create a bar chart using the task names and the corresponding average rewards.
+    fig, ax = plt.subplots()
+    ax.bar(task_names, avg_episode_rewards)
+    ax.set_xlabel("Task")
+    ax.set_ylabel("Average Reward")
+    ax.set_title("Evaluation Average Reward per Task")
 
 
+    # Rotate the tick labels and align them so they don't overlap
+    plt.xticks(rotation=45, ha='right')
 
+    # Adjust layout to make sure labels fit
+    plt.tight_layout()
 
-    # Save the model checkpoint.
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    agent.save_checkpoint("", ckpt_path=f"checkpoints/sac_checkpoint_{args.run_name if args.run_name else current_time}_")
+    # Log the figure to TensorBoard.
+    writer.add_figure("evaluation/average_reward_bar", fig, total_numsteps)
+
     vector_env.close()
 
 if __name__ == '__main__':

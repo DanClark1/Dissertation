@@ -7,11 +7,12 @@ from sac.model import GaussianPolicy, QNetwork, DeterministicPolicy
 
 
 class SAC(object):
-    def __init__(self, num_inputs, action_space, args):
+    def __init__(self, num_inputs, action_space, writer, args):
 
         self.gamma = args.gamma
         self.tau = args.tau
         self.alpha = args.alpha
+        self.writer = writer
 
         self.target_update_interval = args.target_update_interval
         self.automatic_entropy_tuning = args.automatic_entropy_tuning
@@ -52,7 +53,7 @@ class SAC(object):
         # Return the full batch of actions as a numpy array.
         return actions.detach().cpu().numpy()
     
-    def log_embeddings(self, writer, **kwargs):
+    def log_embeddings(self, **kwargs):
         pass
 
 
@@ -127,12 +128,11 @@ class SAC(object):
     def load_checkpoint(self, ckpt_path, evaluate=False):
         print('Loading models from {}'.format(ckpt_path))
         if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path, weights_only=False)
-            self.policy.load_state_dict(checkpoint['policy_state_dict'])
-            self.critic.load_state_dict(checkpoint['critic_state_dict'])
-            self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'])
-            self.critic_optim.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+            self.policy.load_state_dict(checkpoint['policy_state_dict'], strict=False)
+            self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+            self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'], strict=False)
 
             if evaluate:
                 self.policy.eval()

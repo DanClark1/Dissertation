@@ -11,8 +11,8 @@ class BIG_SAC(SAC):
     SAC but there's more parameters in the model
     Used to compare similar numbers of parameters in the models
     '''
-    def __init__(self, num_inputs, action_space, args):
-        super(BIG_SAC, self).__init__(num_inputs, action_space, args)
+    def __init__(self, num_inputs, action_space, writer, args):
+        super(BIG_SAC, self).__init__(num_inputs, action_space, writer, args)
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
