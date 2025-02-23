@@ -253,7 +253,7 @@ def main():
 
         # record embeddings every 5% of total steps
         if total_numsteps % (args.num_steps // 20) == 0:
-            agent.log_embeddings(writer, t=total_numsteps, names=task_names)  
+            agent.log_embeddings(t=total_numsteps, names=task_names)  
 
         
         # evaluating agent
@@ -299,8 +299,9 @@ def main():
     vector_env.close()
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as e:
-        logging.error("An unhandled exception occurred:\n%s", traceback.format_exc())
-        raise
+    main()
+    # try:
+        
+    # except Exception as e:
+    #     logging.error("An unhandled exception occurred:\n%s", traceback.format_exc())
+    #     raise
