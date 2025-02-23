@@ -11,6 +11,12 @@ import imageio
 from PIL import Image, ImageDraw
 from torch.utils.tensorboard import SummaryWriter
 
+import logging
+import traceback
+
+logging.basicConfig(filename='error.log', level=logging.ERROR)
+
+
 # Import your agent classes as before
 from sac.sac import SAC
 from mt_sac.mt_sac import MT_SAC
@@ -293,4 +299,8 @@ def main():
     vector_env.close()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        logging.error("An unhandled exception occurred:\n%s", traceback.format_exc())
+        raise
