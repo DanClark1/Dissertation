@@ -248,7 +248,7 @@ def main():
                 updates += 1
 
         # Logging every few steps
-        if total_numsteps % (num_envs * 1000) == 0:
+        if total_numsteps % (num_envs * 1000) == 0 or total_numsteps == 1:
             print("Total Steps: {}".format(total_numsteps))
 
         # record embeddings every 5% of total steps
@@ -257,7 +257,7 @@ def main():
 
         
         # evaluating agent
-        if total_numsteps % 1000 == 0 and args.eval is True:
+        if total_numsteps % 5000 == 0 and args.eval is True:
             avg_reward = 0
             states = vector_env.reset()
             eval_episodes = 5
@@ -287,6 +287,7 @@ def main():
 
             avg_episode_rewards /= eval_episodes
             writer.add_scalar("evaluation/average_reward", np.mean(avg_rewards), total_numsteps)
+
             for i in range(len(task_names)):
                 writer.add_scalar(f"evaluation/average_reward_{task_names[i]}", avg_episode_rewards[i], total_numsteps) 
 
