@@ -77,9 +77,9 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
 def analyse_moe(agent):
     # agent.critic.moe_1.save_cosine_similarities()
     # agent.critic.moe_2.save_cosine_similarities()
-    agent.policy.moe.save_cosine_similarities()
+    agent.policy.moe.save_moe_info()
 
-    
+
 # -----------------------------------------------------------------------------
 # 3. Main Training Script using SubprocVecEnv
 # -----------------------------------------------------------------------------

@@ -5,7 +5,8 @@ from torch.distributions import Normal
 import utils
 import cProfile
 import pstats
-
+import matplotlib.pyplot as plt
+import numpy as np
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 epsilon = 1e-6
@@ -26,11 +27,12 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, writer=None, mu=0.01):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, writer=None, mu=0.01, name=""):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
         self.mu = mu
+        self.name = name
         self.writer = writer
         self.expert_usage = [[] for _ in range(self.num_tasks)]
         self.cosine_similarities = [[] for _ in range(self.num_tasks)]
@@ -53,25 +55,11 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
-    def calculate_cosine_similarity(self, backbone_output, task):
-        batch_size, _, _ = backbone_output.size()
-        similarity_matrices = []
-
-        for i in range(batch_size):
-            normalised = F.normalize(backbone_output[i], p=2, dim=-1).detach()
-            similarity_matrix = torch.matmul(normalised, normalised.T)
-            row_idx, col_idx = torch.triu_indices(self.num_experts, self.num_experts, offset=1)
-            similarity_values = similarity_matrix[row_idx, col_idx]
-        
-        return torch.mean(similarity_values)
 
 
     def forward(self, backbone_output, task):
 
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
-
-        similarity_value = self.calculate_cosine_similarity(expert_outputs, task)
-
 
         # Compute keys and values using einsum.
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
@@ -95,18 +83,102 @@ class MoELayer(nn.Module):
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
         return tower_input, reg_loss_term
     
-    def save_cosine_similarities(self):
+    def save_moe_info(self):
+        """
+        1) Creates a grouped bar chart showing average usage of each expert per task.
+        2) Creates a heatmap of the pairwise cosine similarities between task embeddings.
+        3) Logs both figures to TensorBoard.
+        """
+        # --------------------------------------------------------------------
+        # 1) Compute and plot average expert usage across tasks
+        # --------------------------------------------------------------------
+        usage_per_expert = torch.zeros(self.num_experts, self.num_tasks)
 
         for i in range(self.num_tasks):
-            self.cosine_similarities[i] = torch.cat(self.cosine_similarities[i], dim=0)
-            self.writer.add_histogram(f'similarities/{self.name}', self.cosine_similarities[i], i)
-        
-         # shape: (num_experts, num_inputs)
+            # Each entry in self.expert_usage[i] is a 1D tensor of shape [num_experts]
+            # usage_matrix shape: [num_experts, N], where N = number of samples recorded for this task
+            usage_matrix = torch.stack(self.expert_usage[i], dim=0).T
 
-        for i in range(self.num_tasks):
-            usage_matrix = torch.stack(self.expert_usage[i], dim=0).T 
+            # Optionally, log histogram of usage for each expert
             for expert_idx in range(self.num_experts):
-                self.writer.add_histogram(f'expert_usage/{self.name}_task:_{expert_idx}', usage_matrix[expert_idx], i)
+                self.writer.add_histogram(
+                    f'expert_usage/{self.name}_task:_{expert_idx}',
+                    usage_matrix[expert_idx],
+                    i
+                )
+
+            # mean_usage_for_this_task: [num_experts]
+            mean_usage_for_this_task = usage_matrix.mean(dim=1)
+            usage_per_expert[:, i] = mean_usage_for_this_task
+
+        # Create grouped bar chart
+        fig, ax = plt.subplots(figsize=(7, 5))
+
+        x_positions = np.arange(self.num_tasks)
+        bar_width   = 0.8 / self.num_experts
+
+        for e in range(self.num_experts):
+            expert_x = x_positions + e * bar_width
+            ax.bar(
+                expert_x,
+                usage_per_expert[e].detach().numpy(),
+                width=bar_width,
+                label=f'Expert {e+1}'
+            )
+
+        ax.set_xlabel("Task")
+        ax.set_ylabel("Average Usage")
+        ax.set_title("Average Expert Usage per Task")
+
+        # Example task labels
+        task_labels = [
+            'reach-v2', 'push-v2', 'pick-place-v2', 'door-open-v2',
+            'drawer-open-v2', 'drawer-close-v2', 'button-press-topdown-v2',
+            'peg-insert-side-v2', 'window-open-v2', 'window-close-v2'
+        ]
+        # Center the tick labels
+        ax.set_xticks(x_positions + bar_width*(self.num_experts-1)/2)
+        ax.set_xticklabels(task_labels, rotation=45, ha='right')
+
+        ax.legend()
+        plt.tight_layout()
+
+        # Log the usage figure
+        self.writer.add_figure("evaluation/average_expert_usage", fig, global_step=0)
+
+        # --------------------------------------------------------------------
+        # 2) Compute and plot pairwise cosine similarities of task embeddings
+        # --------------------------------------------------------------------
+        # task_queries shape: [num_tasks, hidden_size]
+        with torch.no_grad():
+            # Normalize each task embedding
+            normalized = self.task_queries / (self.task_queries.norm(dim=1, keepdim=True) + 1e-9)
+            # Pairwise cosine similarities: [num_tasks, num_tasks]
+            pairwise_sims = normalized @ normalized.T
+
+        fig2, ax2 = plt.subplots(figsize=(6, 5))
+        im = ax2.imshow(pairwise_sims.detach().cpu().numpy(), cmap='viridis', aspect='auto')
+
+        # Add colorbar
+        cbar = fig2.colorbar(im, ax=ax2)
+        cbar.set_label('Cosine Similarity', rotation=90)
+
+        ax2.set_title("Task Embedding Cosine Similarities")
+        ax2.set_xlabel("Task")
+        ax2.set_ylabel("Task")
+
+        ax2.set_xticks(range(self.num_tasks))
+        ax2.set_yticks(range(self.num_tasks))
+        ax2.set_xticklabels(task_labels, rotation=45, ha='right')
+        ax2.set_yticklabels(task_labels)
+
+        plt.tight_layout()
+
+        # Log the similarity figure
+        self.writer.add_figure("evaluation/task_embedding_similarity", fig2, global_step=0)
+
+
+
 
 
 class DebugQNetwork(nn.Module):
@@ -122,7 +194,7 @@ class DebugQNetwork(nn.Module):
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, num_experts=num_experts)
+        self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, num_experts=num_experts, name="critic_1")
         self.linear4_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_1 = nn.Linear(hidden_dim, 1)
@@ -131,7 +203,7 @@ class DebugQNetwork(nn.Module):
         self.linear1_2 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
         self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_2 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, num_experts=num_experts)
+        self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks, writer=writer, num_experts=num_experts, name="critic_2")
         self.linear4_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear5_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_2 = nn.Linear(hidden_dim, 1)
@@ -171,7 +243,7 @@ class DebugGaussianPolicy(nn.Module):
         self.linear1 = nn.Linear(obs_size-num_tasks, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, hidden_dim)
-        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts, writer=writer) 
+        self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts, writer=writer, name="policy") 
 
         self.single_moe = MoELayer(obs_size-num_tasks, hidden_dim, num_tasks)
 

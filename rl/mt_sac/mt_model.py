@@ -44,11 +44,24 @@ class MoELayer(nn.Module):
 
         # not sure if this is always the case so just leaving it here
         task_queries_dim = hidden_size
-        self.task_queries = nn.Parameter(torch.randn(num_tasks, task_queries_dim))
+        self.task_queries = nn.Parameter(torch.empty(num_tasks, task_queries_dim))
+
+        self.apply(weights_init_)
+        self.reset_parameters()
+
+
 
         # Matrices to compute keys and values from the expert outputs.
-        self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
-        self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
+        self.key_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
+        self.value_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
+
+    def reset_parameters(self):
+        # Use Xavier uniform initialization with gain 1
+        nn.init.xavier_uniform_(self.task_queries, gain=1)
+        nn.init.xavier_uniform_(self.key_matricies, gain=1)
+        nn.init.xavier_uniform_(self.value_matricies, gain=1)
+
+
 
     def forward(self, backbone_output, task):
 
@@ -76,7 +89,7 @@ class MoELayer(nn.Module):
 
 
 class QNetwork(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10, num_experts=3):
+    def __init__(self, obs_size, action_size, hidden_dim, num_tasks=10, num_experts=3, writer=None):
         super(QNetwork, self).__init__()
 
         self.num_tasks = num_tasks
@@ -129,7 +142,7 @@ class QNetwork(nn.Module):
 
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10, num_experts=3):
+    def __init__(self, obs_size, action_size, hidden_dim, action_space=None, num_tasks=10, num_experts=3, writer=None):
         super(GaussianPolicy, self).__init__()
 
         self.num_tasks = num_tasks
