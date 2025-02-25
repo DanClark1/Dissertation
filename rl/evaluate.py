@@ -73,6 +73,13 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
         return env
     return _init
 
+
+def analyse_moe(agent):
+    # agent.critic.moe_1.save_cosine_similarities()
+    # agent.critic.moe_2.save_cosine_similarities()
+    agent.policy.moe.save_cosine_similarities()
+
+    
 # -----------------------------------------------------------------------------
 # 3. Main Training Script using SubprocVecEnv
 # -----------------------------------------------------------------------------
@@ -145,6 +152,7 @@ def main():
     # For simplicity, we create one environment per task. You could add more copies if desired.
     for i, (name, env_cls) in enumerate(mw.train_classes.items()):
         # Select a random task from the candidates for this environment
+        # im pretty sure this just selects the 1 class
         task_candidates = [task for task in mw.train_tasks if task.env_name == name]
         task = random.choice(task_candidates)
         task_names.append(name)
@@ -244,7 +252,7 @@ def main():
     ax.set_ylabel("Average Reward")
     ax.set_title("Evaluation Average Reward per Task")
 
-
+    print(task_names)
     # Rotate the tick labels and align them so they don't overlap
     plt.xticks(rotation=45, ha='right')
 
@@ -254,7 +262,11 @@ def main():
     # Log the figure to TensorBoard.
     writer.add_figure("evaluation/average_reward_bar", fig, total_numsteps)
 
+    print(avg_episode_rewards.mean())
+
     vector_env.close()
+
+    analyse_moe(agent)
 
 if __name__ == '__main__':
     main()

@@ -77,6 +77,9 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
         return env
     return _init
 
+
+
+
 # -----------------------------------------------------------------------------
 # 3. Main Training Script using SubprocVecEnv
 # -----------------------------------------------------------------------------
@@ -248,16 +251,17 @@ def main():
                 updates += 1
 
         # Logging every few steps
-        if total_numsteps % (num_envs * 1000) == 0 or total_numsteps == 1:
-            print("Total Steps: {}".format(total_numsteps))
+        if total_numsteps % (num_envs * 1000) == 0:
+            print("Total Steps: {}".format(total_numsteps)) 
 
         # record embeddings every 5% of total steps
-        if total_numsteps % (args.num_steps // 20) == 0:
+        if total_numsteps % (args.num_steps // 20) == 0 or total_numsteps == 1:
             agent.log_embeddings(t=total_numsteps, names=task_names)  
 
         
         # evaluating agent
-        if total_numsteps % 5000 == 0 and args.eval is True:
+        if total_numsteps % 5000 == 0 or total_numsteps == 20:
+            print('logging')
             avg_reward = 0
             states = vector_env.reset()
             eval_episodes = 5
@@ -288,8 +292,13 @@ def main():
             avg_episode_rewards /= eval_episodes
             writer.add_scalar("evaluation/average_reward", np.mean(avg_rewards), total_numsteps)
 
-            for i in range(len(task_names)):
-                writer.add_scalar(f"evaluation/average_reward_{task_names[i]}", avg_episode_rewards[i], total_numsteps) 
+            avg_task_rewards = np.zeros((len(task_names)))
+            envs_per_task = num_envs // len(task_names)
+            for j in range(len(task_names)):
+                avg_task_rewards[j] = avg_episode_rewards[j*envs_per_task:(j+1)*envs_per_task].mean()
+                writer.add_scalar(f"evaluation/average_reward_{task_names[j]}", avg_task_rewards[j], total_numsteps)
+            print('done')
+
 
 
 
