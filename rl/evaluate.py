@@ -75,8 +75,8 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
 
 
 def analyse_moe(agent):
-    # agent.critic.moe_1.save_cosine_similarities()
-    # agent.critic.moe_2.save_cosine_similarities()
+    # agent.critic.moe_1.save_moe_info()
+    # agent.critic.moe_2.save_moe_info()
     agent.policy.moe.save_moe_info()
 
 
@@ -184,16 +184,16 @@ def main():
     # -------------------------------
     if args.model == 'moe':
         print('MOE')
-        agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
+        agent = MT_SAC(obs_dim, action_space, writer, args, debug=True, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.model == 'ee':
         print('EE')
-        agent = EE_MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
+        agent = EE_MT_SAC(obs_dim, action_space, writer, args, debug=True,num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.model == 'big':
         print('BIG')
-        agent = BIG_SAC(obs_dim, action_space, writer, args)
+        agent = BIG_SAC(obs_dim, action_space, writer, args, debug=True,)
     else:
         print('SAC')
-        agent = SAC(obs_dim, action_space, writer, args)
+        agent = SAC(obs_dim, action_space, writer, args, debug=True,)
 
 
     if args.load_model:

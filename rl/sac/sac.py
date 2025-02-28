@@ -7,7 +7,7 @@ from sac.model import GaussianPolicy, QNetwork, DeterministicPolicy
 
 
 class SAC(object):
-    def __init__(self, num_inputs, action_space, writer, args):
+    def __init__(self, num_inputs, action_space, writer, args, debug=False):
 
         self.gamma = args.gamma
         self.tau = args.tau

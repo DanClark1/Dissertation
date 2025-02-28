@@ -46,14 +46,12 @@ class MoELayer(nn.Module):
         task_queries_dim = hidden_size
         self.task_queries = nn.Parameter(torch.empty(num_tasks, task_queries_dim))
 
-        self.apply(weights_init_)
-        self.reset_parameters()
-
-
-
         # Matrices to compute keys and values from the expert outputs.
         self.key_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
+
+        self.apply(weights_init_)
+        self.reset_parameters()
 
     def reset_parameters(self):
         # Use Xavier uniform initialization with gain 1
@@ -71,18 +69,13 @@ class MoELayer(nn.Module):
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
-        # Use the task query (indexed by the task) to compute attention scores.
-        # Make sure to adjust dimensions if your task variable isn’t batch–wise.
+        # calculating attention weights
         attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
-        # place_holder = torch.ones_like(attention_weights) / attention_weights.size(-1)
-
-
-        # Aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
-        # Optionally compute a regularization term.
+        # regularisation term
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
         return tower_input, reg_loss_term
