@@ -5,7 +5,7 @@ from torch.distributions import Normal
 import utils
 import cProfile
 import pstats
-
+import math
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 epsilon = 1e-6
@@ -50,14 +50,18 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
 
-        self.apply(weights_init_)
+        # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
 
     def reset_parameters(self):
         # Use Xavier uniform initialization with gain 1
-        nn.init.xavier_uniform_(self.task_queries, gain=1)
-        nn.init.xavier_uniform_(self.key_matricies, gain=1)
-        nn.init.xavier_uniform_(self.value_matricies, gain=1)
+        # nn.init.xavier_uniform_(self.task_queries, gain=1)
+        # nn.init.xavier_uniform_(self.key_matricies, gain=1)
+        # nn.init.xavier_uniform_(self.value_matricies, gain=1)
+
+        nn.init.kaiming_uniform_(self.task_queries, a=math.sqrt(5))  # Use `a=sqrt(5)` as recommended for uniform init
+        nn.init.kaiming_uniform_(self.key_matricies, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.value_matricies, a=math.sqrt(5))
 
 
 
@@ -108,7 +112,7 @@ class QNetwork(nn.Module):
         self.linear5_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_2 = nn.Linear(hidden_dim, 1)
 
-        self.apply(weights_init_)
+        # self.apply(weights_init_)
 
     def forward(self, obs, action):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
@@ -150,7 +154,7 @@ class GaussianPolicy(nn.Module):
         self.mean_linear = nn.Linear(hidden_dim, action_size)
         self.log_std_linear = nn.Linear(hidden_dim, action_size)
 
-        self.apply(weights_init_)
+        # self.apply(weights_init_)
 
         # action rescaling
         if action_space is None:
