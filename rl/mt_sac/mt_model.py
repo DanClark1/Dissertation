@@ -44,14 +44,14 @@ class MoELayer(nn.Module):
 
         # not sure if this is always the case so just leaving it here
         task_queries_dim = hidden_size
-        self.task_queries = nn.Parameter(torch.empty(num_tasks, task_queries_dim))
+        self.task_queries = nn.Parameter(torch.randn(num_tasks, task_queries_dim))
 
         # Matrices to compute keys and values from the expert outputs.
-        self.key_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
-        self.value_matricies = nn.Parameter(torch.empty(num_experts, task_queries_dim, hidden_size))
+        self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
+        self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
         # self.apply(weights_init_) # removed this for now
-        self.reset_parameters()
+        # self.reset_parameters()
 
     def reset_parameters(self):
         # Use Xavier uniform initialization with gain 1
