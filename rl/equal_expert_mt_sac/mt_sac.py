@@ -20,7 +20,7 @@ class EE_MT_SAC(MT_SAC):
         self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, num_experts=num_experts).to(self.device)
         self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
     
-    def log_embeddings(self, writer, t, names):
+    def log_embeddings(self, t, names):
         # no embeddings to log
         pass
 
