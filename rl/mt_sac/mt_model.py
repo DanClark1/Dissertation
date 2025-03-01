@@ -51,7 +51,22 @@ class MoELayer(nn.Module):
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
         # self.apply(weights_init_) # removed this for now
-        # self.reset_parameters()
+        self.reset_parameters()
+
+    def calculate_cosine_similarity(self, expert_outputs):
+        # expert_outputs shape: (batch_size, num_experts, hidden_size)
+        # Normalize across the hidden dimension for all samples
+        normalized = F.normalize(expert_outputs, p=2, dim=-1)  # (batch_size, num_experts, hidden_size)
+        
+        # Compute pairwise cosine similarities via batched matrix multiplication
+        # Result shape: (batch_size, num_experts, num_experts)
+        sim_matrix = torch.bmm(normalized, normalized.transpose(1, 2))
+        
+        # Create a mask to select the upper-triangular (non-diagonal) entries for each sample
+        mask = torch.triu(torch.ones(self.num_experts, self.num_experts, device=expert_outputs.device), diagonal=1).bool()
+        sim_values = sim_matrix[:, mask]  # (batch_size, num_pairs)
+        
+        return sim_values.mean()
 
     def reset_parameters(self):
         # Use Xavier uniform initialization with gain 1
@@ -73,6 +88,8 @@ class MoELayer(nn.Module):
         expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
+        similarity = self.calculate_cosine_similarity(expert_values)
+
         # calculating attention weights
         attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
@@ -82,6 +99,7 @@ class MoELayer(nn.Module):
         # regularisation term
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
+        reg_loss_term += self.mu * similarity
         return tower_input, reg_loss_term
 
 
