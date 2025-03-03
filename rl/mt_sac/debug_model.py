@@ -7,6 +7,9 @@ import cProfile
 import pstats
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.cluster.hierarchy as sch
+from scipy.spatial.distance import pdist
+
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 epsilon = 1e-6
@@ -35,7 +38,7 @@ class MoELayer(nn.Module):
         self.name = name
         self.writer = writer
         self.expert_usage = [[] for _ in range(self.num_tasks)]
-        self.cosine_similarities = [[] for _ in range(self.num_tasks)]
+        self.cosine_similarities = []
 
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
@@ -79,6 +82,7 @@ class MoELayer(nn.Module):
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
         similarity = self.calculate_cosine_similarity(expert_values)
+        self.cosine_similarities.append(similarity.detach())
         
 
         # Use the task query (indexed by the task) to compute attention scores.
@@ -109,6 +113,8 @@ class MoELayer(nn.Module):
         # --------------------------------------------------------------------
         # 1) Compute and plot average expert usage across tasks
         # --------------------------------------------------------------------
+
+        print('average similarity:', np.array(self.cosine_similarities).mean())
         usage_per_expert = torch.zeros(self.num_experts, self.num_tasks)
 
         for i in range(self.num_tasks):
@@ -193,6 +199,28 @@ class MoELayer(nn.Module):
 
         # Log the similarity figure
         self.writer.add_figure("evaluation/task_embedding_similarity", fig2, global_step=0)
+        
+        # --------------------------------------------------------------------
+        # 3) Hierarchical clustering on task embeddings and dendrogram plotting
+        # --------------------------------------------------------------------
+        with torch.no_grad():
+            # Convert task embeddings to numpy for clustering.
+            task_embeddings_np = self.task_queries.detach().cpu().numpy()
+            # Compute pairwise distances (Euclidean distance in this example)
+            distances = pdist(task_embeddings_np, metric='euclidean')
+            # Compute the linkage matrix using Ward's method
+            linkage_matrix = sch.linkage(distances, method='ward')
+
+        # Plot the dendrogram.
+        fig3, ax3 = plt.subplots(figsize=(8, 5))
+        sch.dendrogram(linkage_matrix, labels=task_labels, ax=ax3)
+        ax3.set_title("Hierarchical Clustering Dendrogram of Task Embeddings")
+        ax3.set_xlabel("Task")
+        ax3.set_ylabel("Euclidean Distance")
+        # Rotate x-axis labels to be vertical to avoid overlapping.
+        plt.setp(ax3.get_xticklabels(), rotation=90, ha='right')
+        plt.tight_layout()
+        self.writer.add_figure("evaluation/task_embedding_hierarchical_clustering", fig3, global_step=0)
 
 
 

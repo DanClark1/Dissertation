@@ -99,7 +99,7 @@ class MoELayer(nn.Module):
         # regularisation term
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
-        reg_loss_term += self.mu * similarity
+        reg_loss_term += self.mu * torch.abs(similarity)
         return tower_input, reg_loss_term
 
 
