@@ -82,7 +82,7 @@ class MoELayer(nn.Module):
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
         similarity = self.calculate_cosine_similarity(expert_values)
-        self.cosine_similarities.append(similarity.detach())
+        
         
 
         # Use the task query (indexed by the task) to compute attention scores.
@@ -100,8 +100,10 @@ class MoELayer(nn.Module):
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)
+        reg_loss_term = self.mu * torch.abs(similarity)
+        self.cosine_similarities.append(reg_loss_term.detach())
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
-        reg_loss_term += self.mu * similarity
+        reg_loss_term += self.mu * torch.abs(torch.mean(similarity))
         return tower_input, reg_loss_term
     
     def save_moe_info(self):

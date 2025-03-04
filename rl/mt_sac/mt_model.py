@@ -26,11 +26,12 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
         self.mu = mu
+        self.phi = phi
 
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
@@ -99,7 +100,7 @@ class MoELayer(nn.Module):
         # regularisation term
         eps = torch.ones_like(attention_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
-        reg_loss_term += self.mu * torch.abs(similarity)
+        reg_loss_term += self.phi * torch.abs(similarity)
         return tower_input, reg_loss_term
 
 
