@@ -6,11 +6,17 @@ from utils import soft_update, hard_update
 from mt_sac.mt_model import GaussianPolicy, QNetwork
 from mt_sac.debug_model import DebugGaussianPolicy, DebugQNetwork
 from sac.sac import SAC
+from matplotlib import pyplot as plt
+import io
 
 class MT_SAC(SAC):
-    def __init__(self, num_inputs, action_space, writer, args, debug=False, num_tasks=10, num_experts=3):
+    def __init__(self, num_inputs, action_space, writer, args, debug=False, num_tasks=10, num_experts=3, task_names=None):
         super(MT_SAC, self).__init__(num_inputs, action_space, writer, args)
-
+        self.task_names = task_names
+        self.actor_embedding_distances = []
+        self.critic_1_embedding_distances = []
+        self.critic_2_embedding_distances = []
+        self.num_tasks = num_tasks
         if debug:
             self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size,  writer=writer, num_experts=num_experts).to(device=self.device)
             self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
@@ -30,6 +36,73 @@ class MT_SAC(SAC):
 
             self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size, action_space, writer=writer, num_experts=num_experts).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
+
+    def calculate_distances(self, embeddings):
+        diff = embeddings[:, torch.newaxis, :] - embeddings[torch.newaxis, :, :]
+        
+        distances = torch.sqrt(torch.sum(diff**2, axis=-1))
+        
+        row_sums = torch.sum(distances, axis=1, keepdims=True)
+        
+        epsilon = 1e-8
+        normalised = distances / (row_sums + epsilon)
+
+        return normalised
+    
+    def record_embedding_distances(self):
+        actor_queries = self.policy.moe.task_queries.detach().cpu()
+        critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
+        critic_queries_2 = self.critic.moe_2.task_queries.detach().cpu()
+        norm_dists_actor = self.calculate_distances(actor_queries)
+        norm_dists_critic_1 = self.calculate_distances(critic_queries_1)
+        norm_dists_critic_2 = self.calculate_distances(critic_queries_2)
+
+        self.actor_embedding_distances.append(norm_dists_actor)
+        self.critic_1_embedding_distances.append(norm_dists_critic_1)
+        self.critic_2_embedding_distances.append(norm_dists_critic_2)
+
+    
+    def create_embedding_distance_graphs(self, step_multiplier):
+        """
+        Creates a separate figure for each embedding.
+        Each figure shows lines for the distance from that embedding to all other embeddings over time.
+        """
+        embeddings = [self.actor_embedding_distances, self.critic_1_embedding_distances, self.critic_2_embedding_distances]
+        names = ['actor', 'critic_1', 'critic_2']
+
+        for k, embedding in enumerate(embeddings):
+            # Stack all recorded distance matrices over time into shape [time, n, n]
+            # where 'time' is the number of training steps recorded so far.
+            all_dists = torch.stack(embedding, dim=0)  # shape: (time, n, n)
+
+            # For each embedding 'i', create a new figure
+            for i in range(self.num_tasks):
+                fig, ax = plt.subplots()
+
+                x_values = [step_multiplier * i for i in range(all_dists.shape[0])]
+                
+                # Plot the distance from embedding i to each other embedding j, over all recorded timesteps
+                for j in range(self.num_tasks):
+                    if j == i:
+                        continue  # skip self-distance
+                    ax.plot(x_values, all_dists[:, i, j], label=f"{self.task_names[j]}")
+                
+                
+                
+                ax.set_title(f"Embedding {i} ({self.task_names[i]})")
+                ax.set_xlabel("Timestep")
+                ax.set_ylabel("Normalized Distance")
+
+                ax.legend()
+
+                # Log this figure to TensorBoard
+                self.writer.add_figure(
+                    f"{names[k]} embedding distances/{self.task_names[i]}",
+                    fig,
+                    global_step=0
+                )
+                plt.close(fig)
+
         
     def log_embeddings(self, t, names):
         actor_queries = self.policy.moe.task_queries.detach().cpu()

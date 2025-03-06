@@ -185,7 +185,7 @@ def main():
     # Instantiate the SAC (or variant) agent
     # -------------------------------
     if args.use_moe:
-        agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
+        agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10), task_names=task_names)
     elif args.use_ee_moe:
         agent = EE_MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.use_big:
@@ -214,7 +214,6 @@ def main():
     # Reset all environments to get initial batch of observations.
     states = vector_env.reset()  # shape: (num_envs, obs_dim)
 
-
     while total_numsteps < args.num_steps:
         # Select actions for all environments.
         if total_numsteps < args.start_steps:
@@ -233,6 +232,8 @@ def main():
 
         states = next_states
         total_numsteps += num_parallel_envs
+
+        agent.record_embedding_distances()
 
         # Update the agent when enough samples have been collected.
         if len(memory) > args.batch_size:
@@ -258,6 +259,10 @@ def main():
         if total_numsteps % (args.num_steps // 20) == 0 or total_numsteps == 1:
             agent.log_embeddings(t=total_numsteps, names=task_names)  
 
+
+        if args.use_moe and total_numsteps % 5000 == 0:
+            agent.record_embedding_distances()
+            
         
         # evaluating agent
         if total_numsteps % 5000 == 0 or total_numsteps == 20:
@@ -301,6 +306,9 @@ def main():
 
 
 
+    if args.use_moe:
+        # step multiplier is how often we record the embeddings
+        agent.create_embedding_distance_graphs(step_multiplier=5000)
 
 
     # Save the model checkpoint.
