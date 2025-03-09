@@ -51,6 +51,8 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
+        self.expert_queries = nn.Parameter(torch.randn(num_experts, task_queries_dim))
+
         # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
 
@@ -86,13 +88,16 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # Compute keys and values using einsum.
-        expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
+        # expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
         expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
 
         similarity = self.calculate_cosine_similarity(expert_values)
 
         # calculating attention weights
-        attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+        # attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
+
+        # try using expert queries instead of expert keys
+        attention_scores = torch.einsum('kni,ki->kn', self.expert_queries, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
         tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
