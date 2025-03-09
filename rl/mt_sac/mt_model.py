@@ -80,6 +80,7 @@ class MoELayer(nn.Module):
         nn.init.kaiming_uniform_(self.task_queries, a=math.sqrt(5))  # Use `a=sqrt(5)` as recommended for uniform init
         nn.init.kaiming_uniform_(self.key_matricies, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.value_matricies, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.expert_queries, a=math.sqrt(5))
 
 
 
@@ -97,7 +98,7 @@ class MoELayer(nn.Module):
         # attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
 
         # try using expert queries instead of expert keys
-        attention_scores = torch.einsum('kni,ki->kn', self.expert_queries, self.task_queries[task])
+        attention_scores = torch.einsum('ni,ki->kn', self.expert_queries, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
 
         tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
