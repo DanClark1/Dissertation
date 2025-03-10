@@ -100,8 +100,12 @@ class MoELayer(nn.Module):
         # try using expert queries instead of expert keys
         attention_scores = torch.einsum('ni,ki->kn', self.expert_queries, self.task_queries[task])
         attention_weights = torch.softmax(attention_scores, dim=-1)
+
         # only select top 2 experts
-        attention_weights, _ = torch.topk(attention_weights, 2, dim=-1)
+        topk, indicies = torch.topk(attention_weights, 2, dim=-1)
+        attention_weights = torch.zeros_like(attention_weights)
+        attention_weights.scatter_(1, indicies, topk)
+
 
         tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
 
