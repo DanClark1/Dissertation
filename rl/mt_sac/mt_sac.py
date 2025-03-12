@@ -50,6 +50,7 @@ class MT_SAC(SAC):
         return normalised
     
     def record_embedding_distances(self):
+        return
         actor_queries = self.policy.moe.task_queries.detach().cpu()
         critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
         critic_queries_2 = self.critic.moe_2.task_queries.detach().cpu()
@@ -105,6 +106,7 @@ class MT_SAC(SAC):
 
         
     def log_embeddings(self, t, names):
+        return
         actor_queries = self.policy.moe.task_queries.detach().cpu()
         critic_queries_1 = self.critic.moe_1.task_queries.detach().cpu()
         critic_queries_2 = self.critic.moe_2.task_queries.detach().cpu()

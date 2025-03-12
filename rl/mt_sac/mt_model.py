@@ -46,7 +46,7 @@ class MoELayer(nn.Module):
         # not sure if this is always the case so just leaving it here
         self.task_embeddings = nn.Parameter(torch.randn(num_tasks, task_embeddings_dim))
 
-        self.routing_matrx = nn.Parameter(torch.randn(input_dim + task_embeddings_dim, num_experts))
+        self.routing_matrix = nn.Parameter(torch.randn(input_dim + task_embeddings_dim, num_experts))
 
         # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
@@ -72,16 +72,14 @@ class MoELayer(nn.Module):
         # nn.init.xavier_uniform_(self.key_matricies, gain=1)
         # nn.init.xavier_uniform_(self.value_matricies, gain=1)
 
-        nn.init.kaiming_uniform_(self.task_queries, a=math.sqrt(5))  # Use `a=sqrt(5)` as recommended for uniform init
-        nn.init.kaiming_uniform_(self.key_matricies, a=math.sqrt(5))
-        nn.init.kaiming_uniform_(self.value_matricies, a=math.sqrt(5))
-        nn.init.kaiming_uniform_(self.expert_queries, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.task_embeddings, a=math.sqrt(5))  # Use `a=sqrt(5)` as recommended for uniform init
+        nn.init.kaiming_uniform_(self.routing_matrix, a=math.sqrt(5))
 
 
 
     def forward(self, backbone_output, task):
 
-        expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrx), dim=-1)
+        expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrix), dim=-1)
 
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
