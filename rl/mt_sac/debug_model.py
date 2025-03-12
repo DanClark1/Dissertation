@@ -112,64 +112,72 @@ class MoELayer(nn.Module):
         2) Creates a heatmap of the pairwise cosine similarities between task embeddings.
         3) Logs both figures to TensorBoard.
         """
+
+        task_labels = [
+                'reach-v2', 'push-v2', 'pick-place-v2', 'door-open-v2',
+                'drawer-open-v2', 'drawer-close-v2', 'button-press-topdown-v2',
+                'peg-insert-side-v2', 'window-open-v2', 'window-close-v2'
+            ]
         # --------------------------------------------------------------------
         # 1) Compute and plot average expert usage across tasks
         # --------------------------------------------------------------------
 
-        print('average similarity:', np.array(self.cosine_similarities).mean())
-        usage_per_expert = torch.zeros(self.num_experts, self.num_tasks)
+        # this will only work if there has been some forward pass (can't be bothered to fix this)
 
-        for i in range(self.num_tasks):
-            # Each entry in self.expert_usage[i] is a 1D tensor of shape [num_experts]
-            # usage_matrix shape: [num_experts, N], where N = number of samples recorded for this task
-            usage_matrix = torch.stack(self.expert_usage[i], dim=0).T
+        try:
+            print('average similarity:', np.array(self.cosine_similarities).mean())
+            usage_per_expert = torch.zeros(self.num_experts, self.num_tasks)
 
-            # Optionally, log histogram of usage for each expert
-            for expert_idx in range(self.num_experts):
-                self.writer.add_histogram(
-                    f'expert_usage/{self.name}_task:_{expert_idx}',
-                    usage_matrix[expert_idx],
-                    i
+            for i in range(self.num_tasks):
+                # Each entry in self.expert_usage[i] is a 1D tensor of shape [num_experts]
+                # usage_matrix shape: [num_experts, N], where N = number of samples recorded for this task
+                usage_matrix = torch.stack(self.expert_usage[i], dim=0).T
+
+                # Optionally, log histogram of usage for each expert
+                for expert_idx in range(self.num_experts):
+                    self.writer.add_histogram(
+                        f'expert_usage/{self.name}_task:_{expert_idx}',
+                        usage_matrix[expert_idx],
+                        i
+                    )
+
+                # mean_usage_for_this_task: [num_experts]
+                mean_usage_for_this_task = usage_matrix.mean(dim=1)
+                usage_per_expert[:, i] = mean_usage_for_this_task
+
+            # Create grouped bar chart
+            fig, ax = plt.subplots(figsize=(7, 5))
+
+            x_positions = np.arange(self.num_tasks)
+            bar_width   = 0.8 / self.num_experts
+
+            for e in range(self.num_experts):
+                expert_x = x_positions + e * bar_width
+                ax.bar(
+                    expert_x,
+                    usage_per_expert[e].detach().numpy(),
+                    width=bar_width,
+                    label=f'Expert {e+1}'
                 )
 
-            # mean_usage_for_this_task: [num_experts]
-            mean_usage_for_this_task = usage_matrix.mean(dim=1)
-            usage_per_expert[:, i] = mean_usage_for_this_task
+            ax.set_xlabel("Task")
+            ax.set_ylabel("Average Usage")
+            ax.set_title("Average Expert Usage per Task")
 
-        # Create grouped bar chart
-        fig, ax = plt.subplots(figsize=(7, 5))
+            # Example task labels
+            
+            # Center the tick labels
+            ax.set_xticks(x_positions + bar_width*(self.num_experts-1)/2)
+            ax.set_xticklabels(task_labels, rotation=45, ha='right')
 
-        x_positions = np.arange(self.num_tasks)
-        bar_width   = 0.8 / self.num_experts
+            ax.legend()
+            plt.tight_layout()
 
-        for e in range(self.num_experts):
-            expert_x = x_positions + e * bar_width
-            ax.bar(
-                expert_x,
-                usage_per_expert[e].detach().numpy(),
-                width=bar_width,
-                label=f'Expert {e+1}'
-            )
+            # Log the usage figure
+            self.writer.add_figure("evaluation/average_expert_usage", fig, global_step=0)
 
-        ax.set_xlabel("Task")
-        ax.set_ylabel("Average Usage")
-        ax.set_title("Average Expert Usage per Task")
-
-        # Example task labels
-        task_labels = [
-            'reach-v2', 'push-v2', 'pick-place-v2', 'door-open-v2',
-            'drawer-open-v2', 'drawer-close-v2', 'button-press-topdown-v2',
-            'peg-insert-side-v2', 'window-open-v2', 'window-close-v2'
-        ]
-        # Center the tick labels
-        ax.set_xticks(x_positions + bar_width*(self.num_experts-1)/2)
-        ax.set_xticklabels(task_labels, rotation=45, ha='right')
-
-        ax.legend()
-        plt.tight_layout()
-
-        # Log the usage figure
-        self.writer.add_figure("evaluation/average_expert_usage", fig, global_step=0)
+        except RuntimeError as e:
+            print('No forward pass has been made yet. Skipping logging of expert usage.')
 
         # --------------------------------------------------------------------
         # 2) Compute and plot pairwise cosine similarities of task embeddings
@@ -200,7 +208,7 @@ class MoELayer(nn.Module):
         plt.tight_layout()
 
         # Log the similarity figure
-        self.writer.add_figure("evaluation/task_embedding_similarity", fig2, global_step=0)
+        self.writer.add_figure(f"evaluation/task_embedding_similarity/{self.name}/", fig2, global_step=0)
         
         # --------------------------------------------------------------------
         # 3) Hierarchical clustering on task embeddings and dendrogram plotting

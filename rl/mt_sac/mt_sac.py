@@ -18,7 +18,7 @@ class MT_SAC(SAC):
         self.critic_2_embedding_distances = []
         self.num_tasks = num_tasks
         if debug:
-            self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size,  writer=writer, num_experts=num_experts).to(device=self.device)
+            self.critic = DebugQNetwork(num_inputs, action_space.shape[0], args.hidden_size,  writer=writer, num_experts=num_experts).to(device=self.device)
             self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
             self.critic_target = DebugQNetwork(num_inputs, action_space.shape[0], args.hidden_size, num_experts=num_experts).to(self.device)

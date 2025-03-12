@@ -26,7 +26,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -44,14 +44,9 @@ class MoELayer(nn.Module):
         ])
 
         # not sure if this is always the case so just leaving it here
-        task_queries_dim = hidden_size
-        self.task_queries = nn.Parameter(torch.randn(num_tasks, task_queries_dim))
+        self.task_embeddings = nn.Parameter(torch.randn(num_tasks, task_embeddings_dim))
 
-        # Matrices to compute keys and values from the expert outputs.
-        self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
-        self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
-
-        self.expert_queries = nn.Parameter(torch.randn(num_experts, task_queries_dim))
+        self.routing_matrx = nn.Parameter(torch.randn(input_dim + task_embeddings_dim, num_experts))
 
         # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
@@ -86,32 +81,23 @@ class MoELayer(nn.Module):
 
     def forward(self, backbone_output, task):
 
+        expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrx), dim=-1)
+
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
-        # Compute keys and values using einsum.
-        # expert_keys = torch.einsum('kli,lij->klj', expert_outputs, self.key_matricies)
-        expert_values = torch.einsum('kli,lij->klj', expert_outputs, self.value_matricies)
-
-        similarity = self.calculate_cosine_similarity(expert_values)
-
-        # calculating attention weights
-        # attention_scores = torch.einsum('kni,ki->kn', expert_keys, self.task_queries[task])
-
-        # try using expert queries instead of expert keys
-        attention_scores = torch.einsum('ni,ki->kn', self.expert_queries, self.task_queries[task])
-        attention_weights = torch.softmax(attention_scores, dim=-1)
+        similarity = self.calculate_cosine_similarity(expert_outputs)
 
         # only select top 2 experts
-        topk, indicies = torch.topk(attention_weights, 2, dim=-1)
-        attention_weights = torch.zeros_like(attention_weights)
-        attention_weights.scatter_(1, indicies, topk)
+        topk, indicies = torch.topk(expert_weights, 2, dim=-1)
+        expert_weights = torch.zeros_like(expert_weights)
+        expert_weights.scatter_(1, indicies, topk)
 
 
-        tower_input = torch.einsum('kn,kni->ki', attention_weights, expert_values)
+        tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
 
         # regularisation term
-        eps = torch.ones_like(attention_weights) / (1e6)
-        # reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(attention_weights + eps), dim=-1))
+        eps = torch.ones_like(expert_weights) / (1e6)
+        reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(expert_weights + eps), dim=-1))
         reg_loss_term = self.phi * torch.abs(similarity)
         return tower_input, reg_loss_term
 
