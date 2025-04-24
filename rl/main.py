@@ -217,7 +217,7 @@ def main():
     states = vector_env.reset()  # shape: (num_envs, obs_dim)
 
 
-    for _ in tqdm.tqdm(range((args.num_step - total_numsteps) // num_parallel_envs), desc="Training", unit="step"):
+    for _ in tqdm.tqdm(range((args.num_steps - total_numsteps) // num_parallel_envs), desc="Training", unit="step"):
         # Select actions for all environments.
         if total_numsteps < args.start_steps:
             actions = np.array([action_space.sample() for _ in range(num_envs)])
