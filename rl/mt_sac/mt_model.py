@@ -10,6 +10,39 @@ LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 epsilon = 1e-6
 
+def project_to_unique_subspaces(
+    U: torch.Tensor,
+    A: torch.Tensor
+) -> torch.Tensor:
+    """
+    Args:
+      U: (batch, K, dim)                — MoE outputs
+      A: (dim, dim)                     — unconstrained parameter
+    Returns:
+      V: (batch, K, dim)                — each expert in its own orthogonal subspace
+    """
+    batch, K, dim = U.shape
+    dsub = dim // K
+
+    # 1) build Cayley orthogonal matrix
+    S = A - A.t()                                # skew-symmetric
+    I = torch.eye(dim, device=A.device, dtype=A.dtype)
+    # solve (I - S) X = (I + S)
+    Q = torch.linalg.solve(I - S, I + S)         # (dim, dim), orthogonal
+
+    # 2) slice into K sub-bases
+    #    Q[:, i*dsub:(i+1)*dsub] is the basis for expert i
+    V = torch.zeros_like(U)
+    for i in range(K):
+        Bi = Q[:, i*dsub:(i+1)*dsub]             # (dim, dsub)
+        ui = U[:, i]                             # (batch, dim)
+        coords = ui @ Bi                         # (batch, dsub)
+        V[:, i]  = coords @ Bi.t()               # back to (batch, dim)
+
+    return V
+
+
+
 # Initialize Policy weights
 def weights_init_(m):
     if isinstance(m, nn.Linear):
@@ -48,6 +81,8 @@ class MoELayer(nn.Module):
 
         self.routing_matrix = nn.Parameter(torch.randn(input_dim + task_embeddings_dim, num_experts))
 
+        self.basis_matrix = nn.Parameter(torch.randn(input_dim, input_dim))
+
         # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
 
@@ -74,6 +109,7 @@ class MoELayer(nn.Module):
 
         nn.init.kaiming_uniform_(self.task_embeddings, a=math.sqrt(5))  # Use `a=sqrt(5)` as recommended for uniform init
         nn.init.kaiming_uniform_(self.routing_matrix, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.basis_matrix, a=math.sqrt(5))
 
 
 
@@ -86,12 +122,9 @@ class MoELayer(nn.Module):
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
 
-        # only select top 2 experts
-        topk, indicies = torch.topk(expert_weights, 2, dim=-1)
-        expert_weights = torch.zeros_like(expert_weights)
-        expert_weights.scatter_(1, indicies, topk)
 
 
+        expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
 
         # regularisation term
@@ -99,6 +132,8 @@ class MoELayer(nn.Module):
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(expert_weights + eps), dim=-1))
         reg_loss_term = self.phi * torch.abs(similarity)
         return tower_input, reg_loss_term
+    
+    
 
 
 class QNetwork(nn.Module):
