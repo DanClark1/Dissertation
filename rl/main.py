@@ -273,17 +273,20 @@ def main():
             print('logging')
             avg_reward = 0
             states = vector_env.reset()
+
             eval_episodes = 5
             avg_rewards = []
             avg_episode_rewards = np.zeros((num_envs,))
 
             for _ in range(eval_episodes):
+                print('eval episode')
                 done_flags = [False] * num_envs
                 eval_obs = vector_env.reset()
                 episode_return = np.zeros(num_envs)
 
                 # loop until every episdode is done
                 while not all(done_flags):
+                    print('yayya')
                     eval_actions = agent.select_action_batch(eval_obs, evaluate=True)
                     next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
 
