@@ -227,7 +227,7 @@ def main():
 
         # Step all environments in parallel.
         next_states, rewards, dones, infos = vector_env.step(actions)
-
+        print('hello')
         # Save each transition to replay memory.
         for i in range(num_envs):
             mask = 0.0 if dones[i] else 1.0
@@ -237,7 +237,7 @@ def main():
         total_numsteps += num_parallel_envs
 
         agent.record_embedding_distances()
-
+        print('helllo')
         # Update the agent when enough samples have been collected.
         if len(memory) > args.batch_size:
             for _ in range(args.updates_per_step):
