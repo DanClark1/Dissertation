@@ -75,8 +75,8 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
 
 
 def analyse_moe(agent):
-    # agent.critic.moe_1.save_moe_info()
-    # agent.critic.moe_2.save_moe_info()
+    agent.critic.moe_1.save_moe_info()
+    agent.critic.moe_2.save_moe_info()
     agent.policy.moe.save_moe_info()
 
 
@@ -128,7 +128,7 @@ def main():
     args = parser.parse_args()
 
     print('runs/{}_{}'.format(
-        args.run_name if args.run_name else 'SAC',
+        args.load_model,
         datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
     # Set random seeds
     torch.manual_seed(args.seed)
@@ -174,7 +174,7 @@ def main():
     action_space = vector_env.action_space  # assumed same for all environments
 
     writer = SummaryWriter('runs/{}_{}'.format(
-        args.run_name if args.run_name else 'SAC',
+        args.load_model if args.load_model else 'SAC',
         datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
     ))
 

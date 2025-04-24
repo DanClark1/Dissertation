@@ -41,3 +41,8 @@ moe_sac/runs/
 old_stuff/
 
 *.mp4
+
+*.csv
+*.pptx
+env_logs/
+

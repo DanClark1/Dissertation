@@ -10,7 +10,7 @@ import metaworld
 import imageio
 from PIL import Image, ImageDraw
 from torch.utils.tensorboard import SummaryWriter
-
+import wandb
 import logging
 import traceback
 
@@ -84,6 +84,7 @@ def make_env_func(env_cls, task, task_index, total_tasks, seed, rank):
 # 3. Main Training Script using SubprocVecEnv
 # -----------------------------------------------------------------------------
 def main():
+    wandb.init(project='rl')
     parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
     parser.add_argument('--env-name', default="",
                         help='Mujoco Gym environment (default: HalfCheetah-v2)')
@@ -240,14 +241,15 @@ def main():
             for _ in range(args.updates_per_step):
                 critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha, *_ = agent.update_parameters(
                     memory, args.batch_size, updates)
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
-                writer.add_scalar('loss/policy', policy_loss, updates)
-                writer.add_scalar('loss/entropy_loss', ent_loss, updates)
-                writer.add_scalar('entropy_temprature/alpha', alpha, updates)
-                if args.use_moe or args.use_ee_moe:
-                    writer.add_scalar('loss/actor_reg_loss', _[1], updates)
-                    writer.add_scalar('loss/critic_reg_loss', _[0], updates)
+                
+                wandb.log({
+                    'loss/critic_1': critic_1_loss,
+                    'loss/critic_2': critic_2_loss,
+                    'loss/policy': policy_loss,
+                    'loss/entropy_loss': ent_loss,
+                    'entropy_temprature/alpha': alpha,
+                    'updates': updates
+                })
                     
                 updates += 1
 
@@ -295,6 +297,10 @@ def main():
                 avg_rewards.append(episode_return.mean())
 
             avg_episode_rewards /= eval_episodes
+            wandb.log({
+                'evaluation/average_reward': np.mean(avg_rewards),
+                'evaluation/average_reward_per_task': avg_episode_rewards.mean(),
+            })
             writer.add_scalar("evaluation/average_reward", np.mean(avg_rewards), total_numsteps)
 
             avg_task_rewards = np.zeros((len(task_names)))
@@ -306,9 +312,9 @@ def main():
 
 
 
-    if args.use_moe:
-        # step multiplier is how often we record the embeddings
-        agent.create_embedding_distance_graphs(step_multiplier=5000)
+    # if args.use_moe:
+    #     # step multiplier is how often we record the embeddings
+    #     agent.create_embedding_distance_graphs(step_multiplier=5000)
 
 
     # Save the model checkpoint.
