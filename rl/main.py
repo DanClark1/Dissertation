@@ -227,7 +227,6 @@ def main():
 
         # Step all environments in parallel.
         next_states, rewards, dones, infos = vector_env.step(actions)
-        print('hello')
         # Save each transition to replay memory.
         for i in range(num_envs):
             mask = 0.0 if dones[i] else 1.0
@@ -237,7 +236,6 @@ def main():
         total_numsteps += num_parallel_envs
 
         agent.record_embedding_distances()
-        print('helllo')
         # Update the agent when enough samples have been collected.
         if len(memory) > args.batch_size:
             for _ in range(args.updates_per_step):
@@ -270,7 +268,6 @@ def main():
         
         # evaluating agent
         if total_numsteps % 5000 == 0 or total_numsteps == 20:
-            print('logging')
             avg_reward = 0
             states = vector_env.reset()
 
@@ -279,14 +276,12 @@ def main():
             avg_episode_rewards = np.zeros((num_envs,))
 
             for _ in range(eval_episodes):
-                print('eval episode')
                 done_flags = [False] * num_envs
                 eval_obs = vector_env.reset()
                 episode_return = np.zeros(num_envs)
 
                 # loop until every episdode is done
                 while not all(done_flags):
-                    print('yayya')
                     eval_actions = agent.select_action_batch(eval_obs, evaluate=True)
                     next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
 
