@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import wandb
 import logging
 import traceback
+import tqdm as tqdm
 
 logging.basicConfig(filename='error.log', level=logging.ERROR)
 
@@ -215,7 +216,8 @@ def main():
     # Reset all environments to get initial batch of observations.
     states = vector_env.reset()  # shape: (num_envs, obs_dim)
 
-    while total_numsteps < args.num_steps:
+
+    for _ in tqdm.tqdm(range((args.num_step - total_numsteps) // num_parallel_envs), desc="Training", unit="step"):
         # Select actions for all environments.
         if total_numsteps < args.start_steps:
             actions = np.array([action_space.sample() for _ in range(num_envs)])
