@@ -242,6 +242,7 @@ def main():
         print("Variance norms: ", variance_norms)
         print("Angular variance norms: ", angular_variances)
         print("CV norms: ", cv_norms)
+        exit()
 
 
 
