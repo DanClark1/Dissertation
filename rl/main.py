@@ -170,7 +170,10 @@ def main():
                                 seed=args.seed, rank=i)
             env_fns.append(env_fn_1)
             env_fns.append(env_fn_2)
-            num_parallel_envs += 2
+            env_fns.append(env_fn_2)
+            env_fns.append(env_fn_2)
+
+            num_parallel_envs += 4
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
