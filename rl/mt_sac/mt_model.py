@@ -59,13 +59,13 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=1000):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
         self.mu = mu
         self.phi = phi
-        self.representation_store_limit = 200
+        self.representation_store_limit = 2000
         self.task_representations = [torch.zeros((self.representation_store_limit, hidden_size)) for _ in range(num_tasks)]
         self.task_representations_count = [0 for _ in range(num_tasks)]
 
@@ -295,7 +295,7 @@ class GaussianPolicy(nn.Module):
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
             mean_norm.append(reps.norm(dim=1).mean())
-            means.append(reps.mean(dim=0) / reps.norm(dim=1).mean())
+            means.append(reps.mean(dim=0) / )
             variances.append(reps.var(dim=0))
             normalised_representations = reps / reps.norm(dim=1, keepdim=True)
             normalised_mean = means[i] / means[i].norm()
