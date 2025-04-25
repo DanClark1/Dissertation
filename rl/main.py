@@ -148,7 +148,7 @@ def main():
     # -------------------------------
 
     if args.do_50:
-        mw = metaworld.MT50(seed=args.seed)
+        mw = metaworld.MT10(seed=args.seed)
     else:
         mw = metaworld.MT5(seed=args.seed)
     total_tasks = len(mw.train_classes)  # e.g. 10 tasks in MT10
@@ -158,18 +158,19 @@ def main():
     num_parallel_envs = 0
     # For simplicity, we create one environment per task. You could add more copies if desired.
     for i, (name, env_cls) in enumerate(mw.train_classes.items()):
-        # Select a random task from the candidates for this environment
-        task_candidates = [task for task in mw.train_tasks if task.env_name == name]
-        task = random.choice(task_candidates)
-        task_names.append(name)
-        # Create the environment function; 'rank' can simply be the task index here.
-        env_fn_1 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
-                               seed=args.seed, rank=i)
-        env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
-                               seed=args.seed, rank=i)
-        env_fns.append(env_fn_1)
-        env_fns.append(env_fn_2)
-        num_parallel_envs += 2
+        if i < 5:
+            # Select a random task from the candidates for this environment
+            task_candidates = [task for task in mw.train_tasks if task.env_name == name]
+            task = random.choice(task_candidates)
+            task_names.append(name)
+            # Create the environment function; 'rank' can simply be the task index here.
+            env_fn_1 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+                                seed=args.seed, rank=i)
+            env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+                                seed=args.seed, rank=i)
+            env_fns.append(env_fn_1)
+            env_fns.append(env_fn_2)
+            num_parallel_envs += 2
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
