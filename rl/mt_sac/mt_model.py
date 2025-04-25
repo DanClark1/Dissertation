@@ -131,9 +131,9 @@ class MoELayer(nn.Module):
 
         if record:
             for i in range(len(tower_input)):
-                if self.task_representations_count[task] < self.representation_store_limit:
-                    self.task_representations[task][self.task_representations_count[task]] = tower_input[i]
-                    self.task_representations_count[task] += 1
+                if self.task_representations_count[task[i]] < self.representation_store_limit:
+                    self.task_representations[task[i]][self.task_representations_count[task[i]]] = tower_input[i]
+                    self.task_representations_count[task[i]] += 1
 
 
         # regularisation term
