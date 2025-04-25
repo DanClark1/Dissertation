@@ -65,7 +65,7 @@ class MoELayer(nn.Module):
         self.num_tasks = num_tasks
         self.mu = mu
         self.phi = phi
-        self.representation_store_limit = 2000
+        self.representation_store_limit = 200
         self.task_representations = [torch.zeros((self.representation_store_limit, hidden_size)) for _ in range(num_tasks)]
         self.task_representations_count = [0 for _ in range(num_tasks)]
 
