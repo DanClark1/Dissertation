@@ -151,16 +151,18 @@ class MoELayer(nn.Module):
         #expert_weights, _ = torch.topk(expert_weights, k=2, dim=-1)
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
-        # set every expert weight except the top-k to 0
-        top_k_values, top_k_indices = torch.topk(expert_weights, k=1, dim=-1)
-        expert_weights = torch.zeros_like(expert_weights)
-        expert_weights.scatter_(1, top_k_indices, top_k_values)
+        # # set every expert weight except the top-k to 0
+        # top_k_values, top_k_indices = torch.topk(expert_weights, k=1, dim=-1)
+        # expert_weights = torch.zeros_like(expert_weights)
+        # expert_weights.scatter_(1, top_k_indices, top_k_values)
 
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
         similarity = 0
 
-        expert_outputs = self.orthogonalise(expert_outputs)
+        expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
+
+       # expert_outputs = self.orthogonalise(expert_outputs)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
         
 
