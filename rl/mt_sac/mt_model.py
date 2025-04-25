@@ -260,9 +260,15 @@ class GaussianPolicy(nn.Module):
         task_representations = self.moe.task_representations
         means = []
         variances = []
+        angular_variances = []
         for i in range(self.num_tasks):
             means.append(task_representations[i].mean(dim=0))
             variances.append(task_representations[i].var(dim=0))
+            normalised_representations = task_representations[i] / task_representations[i].norm(dim=1, keepdim=True)
+            normalised_mean = means[i] / means[i].norm()
+            dots = (normalised_representations * normalised_mean).sum(dim=-1).clamp(-1.0, +1.0)
+            angles = torch.acos(dots)
+            angular_variances.append(angles.var())
         means = torch.stack(means)
         variances = torch.stack(variances)
-        return means, variances
+        return means, variances, angular_variances

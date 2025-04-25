@@ -138,6 +138,10 @@ def main():
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
+    # Set the random seed for the environment
+    gym.utils.seeding.np_random(args.seed)
+
+
 
     # -------------------------------
     # Create the vectorised environments
@@ -229,11 +233,15 @@ def main():
             avg_episode_rewards += episode_return
             avg_rewards.append(episode_return.mean())
 
-        means, variances = agent.policy.calculate_task_variance()
+        means, variances, angular_variances = agent.policy.calculate_task_variance()
         mean_norms = torch.linalg.norm(means, dim=1)
         variance_norms = torch.linalg.norm(variances, dim=1)
+        angular_variance_norms = torch.linalg.norm(angular_variances, dim=1)
+        cv_norms = torch.sqrt(variance_norms) / (mean_norms + 1e-8)
         print("Mean norms: ", mean_norms)
         print("Variance norms: ", variance_norms)
+        print("Angular variance norms: ", angular_variance_norms)
+        print("CV norms: ", cv_norms)
 
 
 
