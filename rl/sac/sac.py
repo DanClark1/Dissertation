@@ -42,14 +42,14 @@ class SAC(object):
             _, _, action = self.policy.sample(state)
         return action.detach().cpu().numpy()[0]
     
-    def select_action_batch(self, states, evaluate=False):
+    def select_action_batch(self, states, evaluate=False, record=False):
         # Convert the numpy array to a tensor and send to device.
         states_tensor = torch.FloatTensor(states).to(self.device)
     
         if not evaluate:
-            actions, _, *_ = self.policy.sample(states_tensor)
+            actions, _, *_ = self.policy.sample(states_tensor, record=record)
         else:
-            _, _, actions, *_ = self.policy.sample(states_tensor)
+            _, _, actions, *_ = self.policy.sample(states_tensor, record=record)
         # Return the full batch of actions as a numpy array.
         return actions.detach().cpu().numpy()
     

@@ -71,11 +71,7 @@ class MoELayer(nn.Module):
         # Aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
 
-        if record:
-            for i in range(tower_input):
-                if self.task_representations_count[task] < self.representation_store_limit:
-                    self.task_representations[task][self.task_representations_count[task]] = tower_input[i]
-                    self.task_representations_count[task] += 1
+        
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)

@@ -65,6 +65,9 @@ class MoELayer(nn.Module):
         self.num_tasks = num_tasks
         self.mu = mu
         self.phi = phi
+        self.representation_store_limit = 200
+        self.task_representations = [torch.zeros((self.representation_store_limit, hidden_size)) for _ in range(num_tasks)]
+        self.task_representations_count = [0 for _ in range(num_tasks)]
 
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
@@ -114,7 +117,7 @@ class MoELayer(nn.Module):
 
 
 
-    def forward(self, backbone_output, task):
+    def forward(self, backbone_output, task, record=False):
 
         expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrix), dim=-1)
 
@@ -123,9 +126,15 @@ class MoELayer(nn.Module):
         similarity = self.calculate_cosine_similarity(expert_outputs)
         similarity = 0
 
-
         # expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
+
+        if record:
+            for i in range(tower_input):
+                if self.task_representations_count[task] < self.representation_store_limit:
+                    self.task_representations[task][self.task_representations_count[task]] = tower_input[i]
+                    self.task_representations_count[task] += 1
+
 
         # regularisation term
         eps = torch.ones_like(expert_weights) / (1e6)
@@ -165,14 +174,14 @@ class QNetwork(nn.Module):
 
         # self.apply(weights_init_)
 
-    def forward(self, obs, action):
+    def forward(self, obs, action, record=False):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
         xu = torch.cat([obs, action], 1)
         
         x1 = F.relu(self.linear1_1(xu))
         x1 = F.relu(self.linear2_1(x1))
         x1 = F.relu(self.linear3_1(x1))
-        x1, reg_loss_1 = self.moe_1(x1, task)
+        x1, reg_loss_1 = self.moe_1(x1, task, record=record)
         x1 = F.relu(self.linear4_1(x1))
         x1 = F.relu(self.linear5_1(x1))
         x1 = self.linear6_1(x1)
@@ -181,7 +190,7 @@ class QNetwork(nn.Module):
         x2 = F.relu(self.linear1_2(xu))
         x2 = F.relu(self.linear2_2(x2))
         x2 = F.relu(self.linear3_2(x2))
-        x2, reg_loss_2 = self.moe_2(x2, task)
+        x2, reg_loss_2 = self.moe_2(x2, task, record=record)
         x2 = F.relu(self.linear4_2(x2))
         x2 = F.relu(self.linear5_2(x2))
         x2 = self.linear6_2(x2)
@@ -217,12 +226,12 @@ class GaussianPolicy(nn.Module):
             self.action_bias = torch.FloatTensor(
                 (action_space.high + action_space.low) / 2.)
 
-    def forward(self, obs):
+    def forward(self, obs, record=False):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
         x = F.relu(self.linear1(obs))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
-        x, reg_loss = self.moe(x, task)
+        x, reg_loss = self.moe(x, task, record=record)
         mean = self.mean_linear(x)
         log_std = self.log_std_linear(x)
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
@@ -246,3 +255,14 @@ class GaussianPolicy(nn.Module):
         self.action_scale = self.action_scale.to(device)
         self.action_bias = self.action_bias.to(device)
         return super(GaussianPolicy, self).to(device)
+    
+    def calculate_task_variance(self):
+        task_representations = self.moe.task_representations
+        means = []
+        variances = []
+        for i in range(self.num_tasks):
+            means.append(task_representations[i].mean(dim=0))
+            variances.append(task_representations[i].var(dim=0))
+        means = torch.stack(means)
+        variances = torch.stack(variances)
+        return means, variances

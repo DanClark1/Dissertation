@@ -127,6 +127,7 @@ def main():
     parser.add_argument('--use_big', action="store_true", help='Use BIG (default: False)')
     parser.add_argument('--load_model', type=str, default="", metavar='N',)
     parser.add_argument('--do_50', action="store_true", help='Do 50 tasks (default: False)')
+    parser.add_argument('--eval_variance', type=bool, default=False, help='Evaluate variance of the model (default: False)')
     
     args = parser.parse_args()
 
@@ -199,10 +200,41 @@ def main():
             agent.load_checkpoint(args.load_model)
 
 
-    print('Logging at:', 'runs/{}_{}'.format(
-        args.run_name if args.run_name else 'SAC',
-        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-    ))
+    if args.eval_variance:
+        avg_reward = 0
+        states = vector_env.reset()
+
+        eval_episodes = 5
+        avg_rewards = []
+        avg_episode_rewards = np.zeros((num_envs,))
+
+        for _ in range(eval_episodes):
+            done_flags = [False] * num_envs
+            eval_obs = vector_env.reset()
+            episode_return = np.zeros(num_envs)
+
+            # loop until every episdode is done
+            while not all(done_flags):
+                eval_actions = agent.select_action_batch(eval_obs, evaluate=True, record=True)
+                next_obs, eval_rewards, eval_dones, _ = vector_env.step(eval_actions)
+
+                for i in range(num_envs):
+
+                    if not done_flags[i]:
+                        episode_return[i] += eval_rewards[i]
+
+                done_flags = [done_flags[i] or eval_dones[i] for i in range(num_envs)]
+                eval_obs = next_obs
+
+            avg_episode_rewards += episode_return
+            avg_rewards.append(episode_return.mean())
+
+        means, variances = agent.policy.calculate_task_variance()
+        mean_norms = torch.linalg.norm(means, dim=1)
+        variance_norms = torch.linalg.norm(variances, dim=1)
+        print("Mean norms: ", mean_norms)
+        print("Variance norms: ", variance_norms)
+
 
 
     memory = ReplayMemory(args.replay_size, args.seed)
