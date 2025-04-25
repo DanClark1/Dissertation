@@ -31,6 +31,9 @@ class MoELayer(nn.Module):
         self.num_experts = num_experts
         self.num_tasks = num_tasks
         self.mu = mu
+        self.representation_store_limit = 200
+        self.task_representations = [torch.zeros((200, hidden_size)) for _ in range(num_tasks)]
+        self.task_representations_count = [0 for _ in range(num_tasks)]
 
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
@@ -50,7 +53,7 @@ class MoELayer(nn.Module):
         self.key_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
         self.value_matricies = nn.Parameter(torch.randn(num_experts, task_queries_dim, hidden_size))
 
-    def forward(self, backbone_output, task):
+    def forward(self, backbone_output, task, record=False):
 
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
@@ -67,6 +70,12 @@ class MoELayer(nn.Module):
 
         # Aggregate expert outputs.
         tower_input = torch.einsum('kn,kni->ki', place_holder, expert_values)
+
+        if record:
+            for i in range(tower_input):
+                if self.task_representations_count[task] < self.representation_store_limit:
+                    self.task_representations[task][self.task_representations_count[task]] = tower_input[i]
+                    self.task_representations_count[task] += 1
 
         # Optionally compute a regularization term.
         eps = torch.ones_like(attention_weights) / (1e6)

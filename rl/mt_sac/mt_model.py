@@ -121,7 +121,7 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
-
+        similarity = 0
 
 
         # expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
@@ -130,7 +130,7 @@ class MoELayer(nn.Module):
         # regularisation term
         eps = torch.ones_like(expert_weights) / (1e6)
         reg_loss_term = - (1 / self.num_experts) * self.mu * (torch.sum(torch.log(expert_weights + eps), dim=-1))
-        reg_loss_term = self.phi * torch.abs(similarity)
+        #reg_loss_term = self.phi * torch.abs(similarity)
         return tower_input, reg_loss_term
     
     
