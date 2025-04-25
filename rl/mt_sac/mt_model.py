@@ -146,7 +146,7 @@ class MoELayer(nn.Module):
 
         expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrix), dim=-1)
         # top-k weights:
-        expert_weights, _ = torch.topk(expert_weights, k=2, dim=-1)
+        #expert_weights, _ = torch.topk(expert_weights, k=2, dim=-1)
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
