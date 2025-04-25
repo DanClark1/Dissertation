@@ -69,6 +69,8 @@ class MoELayer(nn.Module):
         self.task_representations = [torch.zeros((self.representation_store_limit, hidden_size)) for _ in range(num_tasks)]
         self.task_representations_count = [0 for _ in range(num_tasks)]
 
+        self.weight_distribution = [[] for _ in range(num_tasks)]
+
         # Create expert networks (each expert is an MLP)
         self.experts = nn.ModuleList([
             nn.Sequential(
@@ -159,6 +161,7 @@ class MoELayer(nn.Module):
         if record:
             for i in range(len(tower_input)):
                 if self.task_representations_count[task[i]] < self.representation_store_limit:
+                    self.weight_distribution[task[i]].append(expert_weights[i])
                     self.task_representations[task[i]][self.task_representations_count[task[i]]] = tower_input[i]
                     self.task_representations_count[task[i]] += 1
 
@@ -285,12 +288,16 @@ class GaussianPolicy(nn.Module):
     
     def calculate_task_variance(self):
         task_representations = self.moe.task_representations
-
+        weight_distributions = self.moe.weight_distribution
         mean_norm = []
         means = []
         variances = []
         angular_variances = []
         for i in range(self.num_tasks):
+            weights = weight_distributions[i]
+            weights = torch.stack(weights)
+            weights = weights.mean(dim=0)
+            weights = weights / weights.norm()
             reps = task_representations[i]
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
@@ -305,4 +312,4 @@ class GaussianPolicy(nn.Module):
         means = torch.stack(means)
         angular_variances = torch.stack(angular_variances)
         variances = torch.stack(variances)
-        return means, variances, angular_variances, mean_norm
+        return means, variances, angular_variances, mean_norm, weights
