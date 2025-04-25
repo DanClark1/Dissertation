@@ -237,8 +237,8 @@ class GaussianPolicy(nn.Module):
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std, reg_loss
 
-    def sample(self, state):
-        mean, log_std, reg_loss = self.forward(state)
+    def sample(self, state, record=False):
+        mean, log_std, reg_loss = self.forward(state, record=record)
         std = log_std.exp()
         normal = Normal(mean, std)
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
