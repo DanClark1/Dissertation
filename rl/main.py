@@ -192,7 +192,7 @@ def main():
     # Instantiate the SAC (or variant) agent
     # -------------------------------
     if args.use_moe:
-        agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10), task_names=task_names)
+        agent = MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 10), num_tasks=(50 if args.do_50 else 10), task_names=task_names)
     elif args.use_ee_moe:
         agent = EE_MT_SAC(obs_dim, action_space, writer, args, num_experts=(10 if args.do_50 else 3), num_tasks=(50 if args.do_50 else 10))
     elif args.use_big:
