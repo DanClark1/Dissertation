@@ -233,11 +233,12 @@ def main():
             avg_episode_rewards += episode_return
             avg_rewards.append(episode_return.mean())
 
-        means, variances, angular_variances = agent.policy.calculate_task_variance()
-        mean_norms = torch.linalg.norm(means, dim=1)
+        means, variances, angular_variances, mean_norms = agent.policy.calculate_task_variance()
+        norm_of_means = torch.linalg.norm(means, dim=1)
         variance_norms = torch.linalg.norm(variances, dim=1)
         cv_norms = torch.sqrt(variance_norms) / (mean_norms + 1e-8)
-        print("Mean norms: ", mean_norms)
+        print("Norm of means: ", norm_of_means)
+        print("mean of norms: ", mean_norms)
         print("Variance norms: ", variance_norms)
         print("Angular variance norms: ", angular_variances)
         print("CV norms: ", cv_norms)

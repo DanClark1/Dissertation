@@ -284,6 +284,7 @@ class GaussianPolicy(nn.Module):
     def calculate_task_variance(self):
         task_representations = self.moe.task_representations
 
+        mean_norm = []
         means = []
         variances = []
         angular_variances = []
@@ -291,7 +292,7 @@ class GaussianPolicy(nn.Module):
             reps = task_representations[i]
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
-
+            mean_norm.append(reps.norm(dim=1).mean())
             means.append(reps.mean(dim=0))
             variances.append(reps.var(dim=0))
             normalised_representations = reps / reps.norm(dim=1, keepdim=True)
@@ -302,4 +303,4 @@ class GaussianPolicy(nn.Module):
         means = torch.stack(means)
         angular_variances = torch.stack(angular_variances)
         variances = torch.stack(variances)
-        return means, variances, angular_variances
+        return means, variances, angular_variances, mean_norm
