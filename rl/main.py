@@ -236,7 +236,7 @@ def main():
         means, variances, angular_variances, mean_norms = agent.policy.calculate_task_variance()
         norm_of_means = torch.linalg.norm(means, dim=1)
         variance_norms = torch.linalg.norm(variances, dim=1)
-        cv_norms = torch.sqrt(variance_norms) / (mean_norms + 1e-8)
+        cv_norms = torch.sqrt(variance_norms) / (norm_of_means + 1e-8)
         print("Norm of means: ", norm_of_means)
         print("mean of norms: ", mean_norms)
         print("Variance norms: ", variance_norms)
