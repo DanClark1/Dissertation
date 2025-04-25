@@ -295,7 +295,7 @@ class GaussianPolicy(nn.Module):
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
             mean_norm.append(reps.norm(dim=1).mean())
-            means.append(reps.mean(dim=0) / )
+            means.append(reps.mean(dim=0) / reps.norm(dim=1).mean())
             variances.append(reps.var(dim=0))
             normalised_representations = reps / reps.norm(dim=1, keepdim=True)
             normalised_mean = means[i] / means[i].norm()
