@@ -270,5 +270,6 @@ class GaussianPolicy(nn.Module):
             angles = torch.acos(dots)
             angular_variances.append(angles.var())
         means = torch.stack(means)
+        angular_variances = torch.stack(angular_variances)
         variances = torch.stack(variances)
         return means, variances, angular_variances
