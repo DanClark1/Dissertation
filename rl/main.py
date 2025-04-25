@@ -150,7 +150,7 @@ def main():
     if args.do_50:
         mw = metaworld.MT50(seed=args.seed)
     else:
-        mw = metaworld.MT10(seed=args.seed)
+        mw = metaworld.MT5(seed=args.seed)
     total_tasks = len(mw.train_classes)  # e.g. 10 tasks in MT10
 
     env_fns = []
