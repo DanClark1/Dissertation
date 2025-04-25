@@ -130,7 +130,7 @@ class MoELayer(nn.Module):
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
 
         if record:
-            for i in range(tower_input):
+            for i in range(len(tower_input)):
                 if self.task_representations_count[task] < self.representation_store_limit:
                     self.task_representations[task][self.task_representations_count[task]] = tower_input[i]
                     self.task_representations_count[task] += 1
