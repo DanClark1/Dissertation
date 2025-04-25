@@ -115,6 +115,31 @@ class MoELayer(nn.Module):
         nn.init.kaiming_uniform_(self.basis_matrix, a=math.sqrt(5))
 
 
+    def orthogonalise(self,x):
+
+        """
+        input as [batch_size, num_experts, hidden_size]
+        """
+
+        x = x.permute(1, 0, 2).contiguous()
+        # from here it needs to be [n_models,n_samples,dim]
+        x1 = torch.transpose(x, 0,1)
+        basis = torch.unsqueeze(x1[:, 0, :] / (torch.unsqueeze(torch.linalg.norm(x1[:, 0, :], axis=1), 1)), 1)
+
+        for i in range(1, x1.shape[1]):
+            v = x1[:, i, :]
+            v = torch.unsqueeze(v, 1)
+            w = v - torch.matmul(torch.matmul(v, torch.transpose(basis, 2, 1)), basis)
+            wnorm = w / (torch.unsqueeze(torch.linalg.norm(w, axis=2), 2))
+            basis = torch.cat([basis, wnorm], axis=1)
+
+        basis = torch.transpose(basis,0,1)
+
+        # reshape back to (batch_size, num_experts, hidden_size)
+        basis = basis.permute(1, 0, 2).contiguous()
+        return basis
+
+
 
 
     def forward(self, backbone_output, task, record=False):
@@ -126,7 +151,7 @@ class MoELayer(nn.Module):
         similarity = self.calculate_cosine_similarity(expert_outputs)
         similarity = 0
 
-        # expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
+        expert_outputs = self.orthogonalise(expert_outputs)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
 
         if record:
