@@ -59,7 +59,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=1000):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -145,7 +145,8 @@ class MoELayer(nn.Module):
     def forward(self, backbone_output, task, record=False):
 
         expert_weights = F.softmax(torch.einsum('ni,ij->nj', torch.cat([backbone_output, self.task_embeddings[task]], dim=-1), self.routing_matrix), dim=-1)
-
+        # top-k weights:
+        expert_weights, _ = torch.topk(expert_weights, k=2, dim=-1)
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
@@ -153,6 +154,7 @@ class MoELayer(nn.Module):
 
         expert_outputs = self.orthogonalise(expert_outputs)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
+        
 
         if record:
             for i in range(len(tower_input)):
@@ -293,7 +295,7 @@ class GaussianPolicy(nn.Module):
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
             mean_norm.append(reps.norm(dim=1).mean())
-            means.append(reps.mean(dim=0))
+            means.append(reps.mean(dim=0) / reps.norm(dim=1).mean())
             variances.append(reps.var(dim=0))
             normalised_representations = reps / reps.norm(dim=1, keepdim=True)
             normalised_mean = means[i] / means[i].norm()
