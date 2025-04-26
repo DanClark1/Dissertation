@@ -308,11 +308,22 @@ class GaussianPolicy(nn.Module):
             weights = weights.mean(dim=0)
             weights = weights / weights.norm()
             reps = task_representations[i]
+
+            X = reps
+            X_norm = X / torch.linalg.norm(X, dim=-1, keepdim=True)
+            mean = X_norm.mean(dim=0, keepdim=True)
+            X_centered = X_norm - mean
+            cov = (X_centered.T @ X_centered) / (X_norm.shape[0] - 1)
+            sign, logabsdet = torch.linalg.slogdet(cov)
+            gen_var = sign * torch.exp(logabsdet)
+            variances.append(gen_var)
+
+
             mask = reps.norm(dim=1) != 0
             reps = reps[mask]
             mean_norm.append(reps.norm(dim=1).mean())
             means.append(reps.mean(dim=0) / reps.norm(dim=1).mean())
-            variances.append(reps.var(dim=0))
+            #variances.append(reps.var(dim=0))
             normalised_representations = reps / reps.norm(dim=1, keepdim=True)
             normalised_mean = means[i] / means[i].norm()
             dots = (normalised_representations * normalised_mean).sum(dim=-1).clamp(-1.0, +1.0)
