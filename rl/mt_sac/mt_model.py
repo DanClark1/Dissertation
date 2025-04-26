@@ -38,7 +38,8 @@ def project_to_unique_subspaces(
         ui = U[:, i]                             # (batch, dim)
         coords = ui @ Bi                         # (batch, dsub)
         V[:, i]  = coords @ Bi.t()               # back to (batch, dim)
-
+    norms = V.norm(dim=-1, keepdim=True)
+    V = V / (norms + 1e-6)                      
     return V
 
 
