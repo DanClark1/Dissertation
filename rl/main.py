@@ -158,22 +158,20 @@ def main():
     num_parallel_envs = 0
     # For simplicity, we create one environment per task. You could add more copies if desired.
     for i, (name, env_cls) in enumerate(mw.train_classes.items()):
-        if i < 5:
-            # Select a random task from the candidates for this environment
-            task_candidates = [task for task in mw.train_tasks if task.env_name == name]
-            task = random.choice(task_candidates)
-            task_names.append(name)
-            # Create the environment function; 'rank' can simply be the task index here.
-            env_fn_1 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
-                                seed=args.seed, rank=i)
-            env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
-                                seed=args.seed, rank=i)
-            env_fns.append(env_fn_1)
-            env_fns.append(env_fn_2)
-            env_fns.append(env_fn_2)
-            env_fns.append(env_fn_2)
 
-            num_parallel_envs += 4
+        # Select a random task from the candidates for this environment
+        task_candidates = [task for task in mw.train_tasks if task.env_name == name]
+        task = random.choice(task_candidates)
+        task_names.append(name)
+        # Create the environment function; 'rank' can simply be the task index here.
+        env_fn_1 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+                            seed=args.seed, rank=i)
+        env_fn_2 = make_env_func(env_cls, task, task_index=i, total_tasks=total_tasks,
+                            seed=args.seed, rank=i)
+        env_fns.append(env_fn_1)
+        env_fns.append(env_fn_2)
+
+        num_parallel_envs += 2
 
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
