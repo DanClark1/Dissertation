@@ -304,6 +304,7 @@ class GaussianPolicy(nn.Module):
         angular_variances = []
         for i in range(self.num_tasks):
             weights = weight_distributions[i]
+            print(f"weights: {weights}")
             weights = torch.stack(weights)
             weights = weights.mean(dim=0)
             weights = weights / weights.norm()
