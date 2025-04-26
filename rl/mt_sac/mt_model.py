@@ -302,12 +302,13 @@ class GaussianPolicy(nn.Module):
         means = []
         variances = []
         angular_variances = []
+        weights = []
         for i in range(self.num_tasks):
-            weights = weight_distributions[i]
-            print(f"weights: {weights}")
-            weights = torch.stack(weights)
-            weights = weights.mean(dim=0)
-            weights = weights / weights.norm()
+            # weights = weight_distributions[i]
+            # print(f"weights: {weights}")
+            # weights = torch.stack(weights)
+            # weights = weights.mean(dim=0)
+            # weights = weights / weights.norm()
             reps = task_representations[i]
 
             X = reps
