@@ -303,7 +303,7 @@ class GaussianPolicy(nn.Module):
         variances = []
         angular_variances = []
         weights = []
-        for i in range(4):
+        for i in range(3):
             print(i)
             # weights = weight_distributions[i]
             # print(f"weights: {weights}")
