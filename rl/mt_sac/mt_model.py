@@ -162,7 +162,7 @@ class MoELayer(nn.Module):
 
         # expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
 
-       # expert_outputs = self.orthogonalise(expert_outputs)
+        expert_outputs = self.orthogonalise(expert_outputs)
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
         
 
