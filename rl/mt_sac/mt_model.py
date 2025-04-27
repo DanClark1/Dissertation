@@ -332,7 +332,8 @@ class GaussianPolicy(nn.Module):
             weights = weights / weights.norm()
             reps = task_representations[i]
 
-            task_direction_affinities[i].append(compute_projection_ratio(projection_matrices[i], reps))
+            for j in range(self.num_experts):
+                task_direction_affinities[i].append(compute_projection_ratio(projection_matrices[j], reps))
 
             X = reps
             X_norm = X / torch.linalg.norm(X, dim=-1, keepdim=True)
