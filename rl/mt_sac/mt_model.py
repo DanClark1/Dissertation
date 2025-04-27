@@ -60,7 +60,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=False):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=True):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -69,6 +69,12 @@ class MoELayer(nn.Module):
         self.representation_store_limit = 200
         self.task_representations = [torch.zeros((self.representation_store_limit, hidden_size)) for _ in range(num_tasks)]
         self.task_representations_count = [0 for _ in range(num_tasks)]
+
+
+        self.representations = []
+        self.gatings = []
+        self.store_limit_b = 500
+        self.store_count = 0
 
         self.weight_distribution = [[] for _ in range(num_tasks)]
 
@@ -204,12 +210,16 @@ class MoELayer(nn.Module):
             expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
         else:
             expert_outputs = self.orthogonalise(expert_outputs)
-            
+
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
         
 
         if record:
             for i in range(len(tower_input)):
+                if self.store_count < self.store_limit_b:
+                    self.representations.append(tower_input[i])
+                    self.gatings.append(expert_weights[i])
+                    self.store_count += 1
                 if self.task_representations_count[task[i]] < self.representation_store_limit:
                     self.weight_distribution[task[i]].append(expert_weights[i])
                     self.task_representations[task[i]][self.task_representations_count[task[i]]] = tower_input[i]
@@ -337,6 +347,47 @@ class GaussianPolicy(nn.Module):
         return super(GaussianPolicy, self).to(device)
     
     def calculate_task_variance(self):
+        from sklearn.decomposition import PCA
+        import matplotlib.pyplot as plt
+        from sklearn.cluster import KMeans
+        import pandas as pd
+
+
+        # --- experiment 2 -----
+        representations = torch.stack(self.moe.representations)
+        gatings = torch.stack(self.moe.gatings)
+
+        # generate random subspet of index pairs
+        labels = torch.argmax(gatings, axis=1).cpu().numpy()
+        pca = PCA(n_components=2)
+        proj2d = pca.fit_transform(reps)
+        plt.figure(figsize=(6,6))
+        for k in range(gatings.shape[1]):
+            idx = labels == k
+            plt.scatter(proj2d[idx,0], proj2d[idx,1], label=f'Expert {k}', alpha=0.7, s=20)
+
+        plt.legend(loc='best')
+        plt.title("2D PCA of representations, colored by top‐activated expert")
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.tight_layout()
+        plt.savefig("saved/expert_variances.svg", format="svg", dpi=300, bbox_inches="tight")
+        plt.close()
+
+        # cluster into K groups
+        km = KMeans(n_clusters=gatings.shape[1]).fit(reps)
+        clusters = km.labels_
+
+        # build a cross‐tabulation
+        ct = pd.crosstab(clusters, labels, rownames=['cluster'], colnames=['top_expert'])
+        print(ct)
+
+
+        
+
+
+
+        # --- experiment 1 -----
         task_representations = self.moe.task_representations
         weight_distributions = self.moe.weight_distribution
         for i in range(self.num_tasks):
