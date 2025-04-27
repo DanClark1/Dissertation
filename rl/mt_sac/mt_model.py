@@ -324,6 +324,7 @@ class GaussianPolicy(nn.Module):
         angular_variances = []
         all_weights = []
         task_direction_affinities = [[] for _ in range(self.num_tasks)]
+        weight_dist = [[] for _ in range(self.num_tasks)]
         for i in range(self.num_tasks):
             print(i)
             weights = weight_distributions[i]
@@ -357,7 +358,7 @@ class GaussianPolicy(nn.Module):
         means = torch.stack(means)
         angular_variances = torch.stack(angular_variances)
         variances = torch.stack(variances)
-        return means, variances, angular_variances, mean_norm, all_weights, task_direction_affinities
+        return means, variances, angular_variances, mean_norm, weight_distributions, task_direction_affinities
 
 
 
