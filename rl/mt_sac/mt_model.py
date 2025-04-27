@@ -351,14 +351,15 @@ class GaussianPolicy(nn.Module):
         import matplotlib.pyplot as plt
         from sklearn.cluster import KMeans
         import pandas as pd
+        import numpy as np
 
 
         # --- experiment 2 -----
-        reps = torch.stack(self.moe.representations)
-        gatings = torch.stack(self.moe.gatings)
+        reps = torch.stack(self.moe.representations).detach().cpu().numpy()
+        gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()
 
         # generate random subspet of index pairs
-        labels = torch.argmax(gatings, axis=1).cpu().numpy()
+        labels = np.argmax(gatings, axis=1)
         pca = PCA(n_components=2)
         proj2d = pca.fit_transform(reps)
         plt.figure(figsize=(6,6))
