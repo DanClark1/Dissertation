@@ -318,6 +318,7 @@ class GaussianPolicy(nn.Module):
         task_representations = self.moe.task_representations
         weight_distributions = self.moe.weight_distribution
         for i in range(self.num_tasks):
+            print(type(weight_distributions[i]))
             weight_distributions[i] = torch.sum(torch.stack(weight_distributions[i]), dim=0)
             weight_distributions[i] = weight_distributions[i] / torch.linalg.vector_norm(weight_distributions[i])
 
