@@ -60,7 +60,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=False):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -82,6 +82,7 @@ class MoELayer(nn.Module):
             ) for _ in range(num_experts)
         ])
 
+        self.project = project
         # not sure if this is always the case so just leaving it here
         self.task_embeddings = nn.Parameter(torch.randn(num_tasks, task_embeddings_dim))
 
@@ -93,22 +94,41 @@ class MoELayer(nn.Module):
         self.reset_parameters()
 
     def get_expert_projection_matrices(self):
-        A = self.basis_matrix
-        K, dim = self.num_experts, A.shape[0]
-        dsub = dim // K
 
-        # 1) build Cayley orthogonal matrix
-        S = A - A.t()                                # skew-symmetric
-        I = torch.eye(dim, device=A.device, dtype=A.dtype)
-        # solve (I - S) X = (I + S)
-        Q = torch.linalg.solve(I - S, I + S)         # (dim, dim), orthogonal
+        if self.project:
+            A = self.basis_matrix
+            K, dim = self.num_experts, A.shape[0]
+            dsub = dim // K
 
-        projection_matrices = []
-        for i in range(K):
-            Bi = Q[:, i*dsub:(i+1)*dsub]             # (dim, dsub)
-            projection_matrices.append(Bi @ Bi.t())
-        projection_matrices = torch.stack(projection_matrices, dim=0)  # (K, dim, dim)
-        return projection_matrices
+            # 1) build Cayley orthogonal matrix
+            S = A - A.t()                                # skew-symmetric
+            I = torch.eye(dim, device=A.device, dtype=A.dtype)
+            # solve (I - S) X = (I + S)
+            Q = torch.linalg.solve(I - S, I + S)         # (dim, dim), orthogonal
+
+            projection_matrices = []
+            for i in range(K):
+                Bi = Q[:, i*dsub:(i+1)*dsub]             # (dim, dsub)
+                projection_matrices.append(Bi @ Bi.t())
+            projection_matrices = torch.stack(projection_matrices, dim=0)  # (K, dim, dim)
+
+            return projection_matrices
+
+        else:
+            projection_matrices = []
+            for k in range(self.num_experts):
+                # Weight of expert k's second linear layer
+                W = self.experts[k][2].weight  # [hidden_size, hidden_size]
+                # SVD on transpose for row-space basis
+                U, S, Vt = torch.linalg.svd(W.t(), full_matrices=False)
+                rank = (S > 1e-6).sum().item()
+                U = U[:, :rank]
+                Pk = U @ U.t()
+                projection_matrices.append(Pk)
+            return torch.stack(projection_matrices, dim=0)
+    
+
+        
 
 
     def calculate_cosine_similarity(self, expert_outputs):
@@ -180,9 +200,11 @@ class MoELayer(nn.Module):
         similarity = self.calculate_cosine_similarity(expert_outputs)
         similarity = 0
 
-        expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
-
-        #expert_outputs = self.orthogonalise(expert_outputs)
+        if self.project:
+            expert_outputs = project_to_unique_subspaces(expert_outputs, self.basis_matrix)
+        else:
+            expert_outputs = self.orthogonalise(expert_outputs)
+            
         tower_input = torch.einsum('kn,kni->ki', expert_weights, expert_outputs)
         
 
