@@ -317,6 +317,11 @@ class GaussianPolicy(nn.Module):
     def calculate_task_variance(self):
         task_representations = self.moe.task_representations
         weight_distributions = self.moe.weight_distribution
+        for i in range(self.num_tasks):
+            weight_distributions[i] = torch.sum(torch.stack(weight_distributions[i]), dim=0)
+            weight_distributions[i] = weight_distributions[i] / torch.linalg.vector_norm(weight_distributions[i])
+
+
         projection_matrices = self.moe.get_expert_projection_matrices()
         mean_norm = []
         means = []
