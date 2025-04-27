@@ -358,22 +358,21 @@ class GaussianPolicy(nn.Module):
         reps = torch.stack(self.moe.representations).detach().cpu().numpy()
         gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()
 
-        # generate random subspet of index pairs
         labels = np.argmax(gatings, axis=1)
-        pca = PCA(n_components=2)
-        proj2d = pca.fit_transform(reps)
-        plt.figure(figsize=(6,6))
-        for k in range(gatings.shape[1]):
-            idx = labels == k
-            plt.scatter(proj2d[idx,0], proj2d[idx,1], label=f'Expert {k}', alpha=0.7, s=20)
+        # pca = PCA(n_components=2)
+        # proj2d = pca.fit_transform(reps)
+        # plt.figure(figsize=(6,6))
+        # for k in range(gatings.shape[1]):
+        #     idx = labels == k
+        #     plt.scatter(proj2d[idx,0], proj2d[idx,1], label=f'Expert {k}', alpha=0.7, s=20)
 
-        plt.legend(loc='best')
-        plt.title("2D PCA of representations, colored by top‐activated expert")
-        plt.xlabel("PC1")
-        plt.ylabel("PC2")
-        plt.tight_layout()
-        plt.savefig("saved/expert_variances.svg", format="svg", dpi=300, bbox_inches="tight")
-        plt.close()
+        # plt.legend(loc='best')
+        # plt.title("2D PCA of representations, colored by top‐activated expert")
+        # plt.xlabel("PC1")
+        # plt.ylabel("PC2")
+        # plt.tight_layout()
+        # plt.savefig("saved/expert_variances.svg", format="svg", dpi=300, bbox_inches="tight")
+        # plt.close()
 
         # cluster into K groups
         km = KMeans(n_clusters=gatings.shape[1]).fit(reps)
@@ -382,6 +381,28 @@ class GaussianPolicy(nn.Module):
         # build a cross‐tabulation
         ct = pd.crosstab(clusters, labels, rownames=['cluster'], colnames=['top_expert'])
         print(ct)
+
+        # Plot heatmap
+        fig, ax = plt.subplots(figsize=(6, 4))
+        im = ax.imshow(ct, aspect='auto')
+
+        # Annotate counts
+        for i in range(ct.shape[0]):
+            for j in range(ct.shape[1]):
+                ax.text(j, i, ct.iat[i, j], ha='center', va='center', color='white' if ct.iat[i, j] > ct.values.max()/2 else 'black')
+
+        # Labels and ticks
+        ax.set_xticks(np.arange(ct.shape[1]))
+        ax.set_xticklabels(ct.columns)
+        ax.set_yticks(np.arange(ct.shape[0]))
+        ax.set_yticklabels(ct.index)
+        ax.set_xlabel('Top Expert')
+        ax.set_ylabel('Cluster')
+        ax.set_title('Cluster vs. Expert Activation Frequency')
+
+        plt.tight_layout()
+        plt.savefig('saved/cluster_vs_expert_heatmap.svg', format='svg')
+        plt.show()
 
 
         
