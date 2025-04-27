@@ -198,9 +198,9 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # # set every expert weight except the top-k to 0
-        top_k_values, top_k_indices = torch.topk(expert_weights, k=1, dim=-1)
-        expert_weights = torch.zeros_like(expert_weights)
-        expert_weights.scatter_(1, top_k_indices, top_k_values)
+        # top_k_values, top_k_indices = torch.topk(expert_weights, k=1, dim=-1)
+        # expert_weights = torch.zeros_like(expert_weights)
+        # expert_weights.scatter_(1, top_k_indices, top_k_values)
 
 
         similarity = self.calculate_cosine_similarity(expert_outputs)
@@ -358,27 +358,34 @@ class GaussianPolicy(nn.Module):
 
 
         # --- experiment 2 -----
-        reps    = torch.stack(self.moe.representations)
-        reps = (reps / torch.linalg.norm(reps, dim=-1, keepdim=True)).detach().cpu().numpy()
-        gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()
+        reps   = torch.stack(self.moe.representations)                             # (N, hidden)
+        reps   = reps / reps.norm(dim=-1, keepdim=True)                            # normalize
+        gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()             # (N, K)
 
-        labels   = np.argmax(gatings, axis=1)   # true “expert” label per sample
-        km       = KMeans(n_clusters=gatings.shape[1]).fit(reps)
-        clusters = km.labels_
+        # 2) cluster the reps (rows) into K clusters
+        K = gatings.shape[1]
+        rep_km    = KMeans(n_clusters=K).fit(reps.detach().cpu().numpy())
+        rep_labels = rep_km.labels_                                                 # cluster index per sample
 
-        # build cross‐tab
-        ct = pd.crosstab(clusters, labels, rownames=['cluster'], colnames=['top_expert'])
+        # 3) cluster the gatings (rows) into K clusters
+        gate_km     = KMeans(n_clusters=K).fit(gatings)
+        gate_labels = gate_km.labels_                                                # “true” expert‐usage cluster
 
-        # compute Purity
-        N = len(labels)
+        # 4) build cross‐tab: rows=reps clusters, cols=gating clusters
+        ct = pd.crosstab(rep_labels, gate_labels,
+                        rownames=['rep_cluster'], colnames=['gate_cluster'])
+
+        # 5) compute purity
+        N = len(rep_labels)
         purity = ct.max(axis=1).sum() / N
 
-        # compute NMI
-        nmi = normalized_mutual_info_score(labels, clusters, average_method='geometric')
+        # 6) compute NMI
+        nmi = normalized_mutual_info_score(gate_labels, rep_labels,
+                                        average_method='geometric')
 
         print(f"Purity = {purity:.3f}, NMI = {nmi:.3f}")
 
-        # plot heatmap
+        # 7) plot
         fig, ax = plt.subplots(figsize=(6, 4))
         im = ax.imshow(ct, aspect='auto', cmap='viridis')
 
@@ -386,20 +393,20 @@ class GaussianPolicy(nn.Module):
         for i in range(ct.shape[0]):
             for j in range(ct.shape[1]):
                 val = ct.iat[i, j]
-                ax.text(j, i, val, ha='center', va='center',
-                        color='white' if val > ct.values.max() / 2 else 'black')
+                ax.text(j, i, val,
+                        ha='center', va='center',
+                        color='white' if val > ct.values.max()/2 else 'black')
 
-        # labels, ticks, title
         ax.set_xticks(np.arange(ct.shape[1]))
         ax.set_xticklabels(ct.columns)
         ax.set_yticks(np.arange(ct.shape[0]))
         ax.set_yticklabels(ct.index)
-        ax.set_xlabel('Top Expert')
-        ax.set_ylabel('Cluster')
-        ax.set_title(f'Cluster vs. Expert Activation Frequency\nPurity={purity:.3f}, NMI={nmi:.3f}')
+        ax.set_xlabel('Gate Cluster')
+        ax.set_ylabel('Rep Cluster')
+        ax.set_title(f'Cluster vs. Gate‐Usage Frequency\nPurity={purity:.3f}, NMI={nmi:.3f}')
 
         plt.tight_layout()
-        plt.savefig('saved/cluster_vs_expert_heatmap.svg', format='svg')
+        plt.savefig('saved/cluster_vs_gate_heatmap.svg', format='svg')
         plt.close(fig)
 
 
