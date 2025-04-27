@@ -354,7 +354,7 @@ class GaussianPolicy(nn.Module):
 
 
         # --- experiment 2 -----
-        representations = torch.stack(self.moe.representations)
+        reps = torch.stack(self.moe.representations)
         gatings = torch.stack(self.moe.gatings)
 
         # generate random subspet of index pairs
