@@ -73,7 +73,7 @@ class MoELayer(nn.Module):
 
         self.representations = []
         self.gatings = []
-        self.store_limit_b = 200
+        self.store_limit_b = 2000
         self.store_count = 0
 
         self.weight_distribution = [[] for _ in range(num_tasks)]
