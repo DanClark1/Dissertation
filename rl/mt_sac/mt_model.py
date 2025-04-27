@@ -92,6 +92,25 @@ class MoELayer(nn.Module):
         # self.apply(weights_init_) # removed this for now
         self.reset_parameters()
 
+    def get_expert_projection_matrices(self):
+        A = self.basis_matrix
+        K, dim = self.num_experts, A.shape[0]
+        dsub = dim // K
+
+        # 1) build Cayley orthogonal matrix
+        S = A - A.t()                                # skew-symmetric
+        I = torch.eye(dim, device=A.device, dtype=A.dtype)
+        # solve (I - S) X = (I + S)
+        Q = torch.linalg.solve(I - S, I + S)         # (dim, dim), orthogonal
+
+        projection_matrices = []
+        for i in range(K):
+            Bi = Q[:, i*dsub:(i+1)*dsub]             # (dim, dsub)
+            projection_matrices.append(Bi @ Bi.t())
+        projection_matrices = torch.stack(projection_matrices, dim=0)  # (K, dim, dim)
+        return projection_matrices
+
+
     def calculate_cosine_similarity(self, expert_outputs):
         # expert_outputs shape: (batch_size, num_experts, hidden_size)
         # Normalize across the hidden dimension for all samples
@@ -298,19 +317,22 @@ class GaussianPolicy(nn.Module):
     def calculate_task_variance(self):
         task_representations = self.moe.task_representations
         weight_distributions = self.moe.weight_distribution
+        projection_matrices = self.get_expert_projection_matrices()
         mean_norm = []
         means = []
         variances = []
         angular_variances = []
         weights = []
+        task_direction_affinities = [[] for _ in range(self.num_tasks)]
         for i in range(self.num_tasks):
             print(i)
-            # weights = weight_distributions[i]
-            # print(f"weights: {weights}")
-            # weights = torch.stack(weights)
-            # weights = weights.mean(dim=0)
-            # weights = weights / weights.norm()
+            weights = weight_distributions[i]
+            weights = torch.stack(weights)
+            weights = weights.mean(dim=0)
+            weights = weights / weights.norm()
             reps = task_representations[i]
+
+            task_direction_affinities[i].append(compute_projection_ratio(projection_matrices[i], reps))
 
             X = reps
             X_norm = X / torch.linalg.norm(X, dim=-1, keepdim=True)
@@ -335,4 +357,22 @@ class GaussianPolicy(nn.Module):
         means = torch.stack(means)
         angular_variances = torch.stack(angular_variances)
         variances = torch.stack(variances)
-        return means, variances, angular_variances, mean_norm, weights
+        return means, variances, angular_variances, mean_norm, weights, task_direction_affinities
+
+
+
+
+def compute_projection_ratio(P, H):
+    '''
+    P -> projection matrix (d, d)
+    H -> features (N, d)
+    '''
+    H_proj = H @ P.T 
+    
+    norm_orig = H.norm(dim=1)      # ||h_i||
+    norm_proj = H_proj.norm(dim=1) # ||P h_i||
+    
+    eps = 1e-8
+    ratios = norm_proj / (norm_orig + eps)
+    
+    return ratios.mean()
