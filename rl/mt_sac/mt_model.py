@@ -60,7 +60,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=False):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=True):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -101,7 +101,7 @@ class MoELayer(nn.Module):
 
     def get_expert_projection_matrices(self):
 
-        if self.project:
+        if not self.project:
             A = self.basis_matrix
             K, dim = self.num_experts, A.shape[0]
             dsub = dim // K
@@ -198,7 +198,7 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([expert(backbone_output) for expert in self.experts], dim=1)
 
         # # set every expert weight except the top-k to 0
-        top_k_values, top_k_indices = torch.topk(expert_weights, k=2, dim=-1)
+        top_k_values, top_k_indices = torch.topk(expert_weights, k=1, dim=-1)
         expert_weights = torch.zeros_like(expert_weights)
         expert_weights.scatter_(1, top_k_indices, top_k_values)
 
