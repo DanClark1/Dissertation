@@ -317,7 +317,7 @@ class GaussianPolicy(nn.Module):
     def calculate_task_variance(self):
         task_representations = self.moe.task_representations
         weight_distributions = self.moe.weight_distribution
-        projection_matrices = self.get_expert_projection_matrices()
+        projection_matrices = self.moe.get_expert_projection_matrices()
         mean_norm = []
         means = []
         variances = []
