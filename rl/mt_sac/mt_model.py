@@ -358,7 +358,8 @@ class GaussianPolicy(nn.Module):
 
 
         # --- experiment 2 -----
-        reps    = torch.stack(self.moe.representations).detach().cpu().numpy()
+        reps    = torch.stack(self.moe.representations)
+        reps = (reps / torch.linalg.norm(reps, dim=-1, keepdim=True)).detach().cpu().numpy()
         gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()
 
         labels   = np.argmax(gatings, axis=1)   # true “expert” label per sample
