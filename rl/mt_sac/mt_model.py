@@ -60,7 +60,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=True):
+    def __init__(self, input_dim, hidden_size, num_tasks, num_experts=3, activation=F.relu, mu=0.01, phi=0.1, task_embeddings_dim=100, project=False):
         super().__init__()
         self.num_experts = num_experts
         self.num_tasks = num_tasks
@@ -101,7 +101,7 @@ class MoELayer(nn.Module):
 
     def get_expert_projection_matrices(self):
 
-        if not self.project:
+        if self.project:
             A = self.basis_matrix
             K, dim = self.num_experts, A.shape[0]
             dsub = dim // K
