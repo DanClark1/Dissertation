@@ -437,8 +437,9 @@ class GaussianPolicy(nn.Module):
 
         # 3) plot
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
-                   alpha=0.2, s=10, color='gray', label='data points')
+        ax.set_box_aspect(1) 
+        # ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
+        #            alpha=0.2, s=10, color='gray', label='data points')
 
         for i, (cx, cy) in enumerate(centroids_2d):
             label = cluster_to_tasklist[i]
@@ -451,6 +452,7 @@ class GaussianPolicy(nn.Module):
         ax.set_ylabel('PC 2')
         ax.set_title('Clusters Labeled by Top Tasks in Each')
         plt.tight_layout()
+        
         plt.savefig('saved/centroids_multi_task_labels_pca.svg', format='svg')
         plt.close(fig)
 
