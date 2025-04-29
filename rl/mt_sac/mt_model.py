@@ -436,7 +436,7 @@ class GaussianPolicy(nn.Module):
         centroids_2d = pca.transform(rep_km.cluster_centers_)
 
         # 3) plot
-        fig, ax = plt.subplots(figsize=(10, 10))
+        fig, ax = plt.subplots(figsize=(7, 7))
         ax.set_box_aspect(1) 
         # ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
         #            alpha=0.2, s=10, color='gray', label='data points')
