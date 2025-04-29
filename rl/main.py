@@ -173,6 +173,8 @@ def main():
 
         num_parallel_envs += 2
 
+
+
     # Create a vectorised environment using SubprocVecEnv.
     vector_env = SubprocVecEnv(env_fns)
     # vector_env = VecMonitor(vector_env, filename='env_logs/{}_{}'.format(
@@ -235,7 +237,7 @@ def main():
             avg_episode_rewards += episode_return
             avg_rewards.append(episode_return.mean())
 
-        means, variances, angular_variances, mean_norms, weights, affinities = agent.policy.calculate_task_variance()
+        means, variances, angular_variances, mean_norms, weights, affinities = agent.policy.calculate_task_variance(task_names)
         norm_of_means = torch.linalg.norm(means, dim=1)
         #variance_norms = torch.linalg.norm(variances, dim=1)
         #cv_norms = torch.sqrt(variance_norms) / (norm_of_means + 1e-8)

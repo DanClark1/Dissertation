@@ -348,7 +348,7 @@ class GaussianPolicy(nn.Module):
         self.action_bias = self.action_bias.to(device)
         return super(GaussianPolicy, self).to(device)
     
-    def calculate_task_variance(self):
+    def calculate_task_variance(self, task_names):
         from sklearn.decomposition import PCA
         import matplotlib.pyplot as plt
         from sklearn.cluster import KMeans
@@ -460,6 +460,41 @@ class GaussianPolicy(nn.Module):
         plt.tight_layout()
         plt.savefig('saved/cluster_vs_gate_heatmap.svg', format='svg')
         plt.close(fig)
+
+        pca = PCA(n_components=2)
+        reps_2d = pca.fit_transform(reps.detach().cpu().numpy())
+        centroids_2d = pca.transform(rep_km.cluster_centers_)
+
+        # 2) make the plot
+        fig, ax = plt.subplots(figsize=(6, 6))
+        # plot all points lightly
+        ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
+                   alpha=0.2, s=10, color='gray', label='data points')
+
+        # plot centroids and label them
+        for i, (cx, cy) in enumerate(centroids_2d):
+            # pick the most common true-task in this cluster
+            members = tasks[rep_labels == i]
+            if members.size > 0:
+                name = task_names[np.bincount(members).argmax()]
+            else:
+                name = f'cluster_{i}'
+            # draw the centroid
+            ax.scatter(cx, cy,
+                       marker='X', s=100, color='red', edgecolor='k')
+            # annotate with the task name
+            ax.text(cx + 0.02, cy + 0.02, name,
+                    fontsize=9, weight='bold')
+
+        ax.set_xlabel('PC 1')
+        ax.set_ylabel('PC 2')
+        ax.set_title('KMeans Centroids Projected onto First 2 PCs')
+        ax.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig('saved/centroids_pca.svg', format='svg')
+        plt.close(fig)
+
 
 
 
