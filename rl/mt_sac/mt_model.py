@@ -363,7 +363,7 @@ class GaussianPolicy(nn.Module):
         gatings = torch.stack(self.moe.gatings).detach().cpu().numpy()             # (N, K)
 
         # 2) cluster the reps (rows) into K clusters
-        K = 10
+        K = 5
         rep_km    = KMeans(n_clusters=K).fit(reps.detach().cpu().numpy())
         rep_labels = rep_km.labels_                                                 # cluster index per sample
 
