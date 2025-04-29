@@ -359,7 +359,11 @@ class GaussianPolicy(nn.Module):
         # --- experiment 3 -----
         reps   = torch.stack(self.moe.representations)                             # (N, hidden)
         reps   = reps / reps.norm(dim=-1, keepdim=True)                            # normalize
-        tasks = self.moe.task_list
+        raw_tasks = np.array(self.moe.task_list, dtype=int)  
+        unique = np.unique(raw_tasks)
+        # if your labels aren’t already 0..n_tasks-1, remap them:
+        task_map = {old: new for new, old in enumerate(unique)}
+        tasks = np.array([task_map[x] for x in raw_tasks], dtype=int)
         # 2) cluster the reps (rows) into K clusters
         K = 10
         rep_km    = KMeans(n_clusters=K).fit(reps.detach().cpu().numpy())
