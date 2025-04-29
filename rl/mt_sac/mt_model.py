@@ -401,7 +401,7 @@ class GaussianPolicy(nn.Module):
         ax.set_title(f'Cluster vs. Tasks\nPurity={purity:.3f}, NMI={nmi:.3f}')
 
         plt.tight_layout()
-        plt.savefig('saved/cluster_vs_gate_heatmap.svg', format='svg')
+        plt.savefig('saved/cluster_vs_task_heatmap.svg', format='svg')
         plt.close(fig)
 
 
