@@ -375,7 +375,7 @@ class GaussianPolicy(nn.Module):
         purity = ct.max(axis=1).sum() / N
 
         # 6) compute NMI
-        nmi = normalized_mutual_info_score(gate_labels, rep_labels,
+        nmi = normalized_mutual_info_score(tasks, rep_labels,
                                         average_method='geometric')
 
         print(f"Purity = {purity:.3f}, NMI = {nmi:.3f}")
