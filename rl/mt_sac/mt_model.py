@@ -73,6 +73,7 @@ class MoELayer(nn.Module):
 
         self.representations = []
         self.gatings = []
+        self.task_list = []
         self.store_limit_b = 2000
         self.store_count = 0
 
@@ -220,6 +221,7 @@ class MoELayer(nn.Module):
                     self.representations.append(tower_input[i])
                     self.gatings.append(expert_weights[i])
                     self.store_count += 1
+                    self.task_list.append(task[i])
                 if self.task_representations_count[task[i]] < self.representation_store_limit:
                     self.weight_distribution[task[i]].append(expert_weights[i])
                     self.task_representations[task[i]][self.task_representations_count[task[i]]] = tower_input[i]
@@ -354,7 +356,53 @@ class GaussianPolicy(nn.Module):
         import numpy as np
         from sklearn.metrics import normalized_mutual_info_score
 
+        # --- experiment 3 -----
+        reps   = torch.stack(self.moe.representations)                             # (N, hidden)
+        reps   = reps / reps.norm(dim=-1, keepdim=True)                            # normalize
+        tasks = self.moe.task_list
+        # 2) cluster the reps (rows) into K clusters
+        K = 10
+        rep_km    = KMeans(n_clusters=K).fit(reps.detach().cpu().numpy())
+        rep_labels = rep_km.labels_                                                 # cluster index per sample
+                                        # “true” expert‐usage cluster
 
+        # 4) build cross‐tab: rows=reps clusters, cols=gating clusters
+        ct = pd.crosstab(rep_labels, tasks,
+                        rownames=['rep_cluster'], colnames=['gate_cluster'])
+
+        # 5) compute purity
+        N = len(rep_labels)
+        purity = ct.max(axis=1).sum() / N
+
+        # 6) compute NMI
+        nmi = normalized_mutual_info_score(gate_labels, rep_labels,
+                                        average_method='geometric')
+
+        print(f"Purity = {purity:.3f}, NMI = {nmi:.3f}")
+
+        # 7) plot
+        fig, ax = plt.subplots(figsize=(6, 4))
+        im = ax.imshow(ct, aspect='auto', cmap='viridis')
+
+        # annotate counts
+        for i in range(ct.shape[0]):
+            for j in range(ct.shape[1]):
+                val = ct.iat[i, j]
+                ax.text(j, i, val,
+                        ha='center', va='center',
+                        color='white' if val > ct.values.max()/2 else 'black')
+
+        ax.set_xticks(np.arange(ct.shape[1]))
+        ax.set_xticklabels(ct.columns)
+        ax.set_yticks(np.arange(ct.shape[0]))
+        ax.set_yticklabels(ct.index)
+        ax.set_xlabel('Gate Cluster')
+        ax.set_ylabel('Rep Cluster')
+        ax.set_title(f'Cluster vs. Tasks\nPurity={purity:.3f}, NMI={nmi:.3f}')
+
+        plt.tight_layout()
+        plt.savefig('saved/cluster_vs_gate_heatmap.svg', format='svg')
+        plt.close(fig)
 
 
         # --- experiment 2 -----
