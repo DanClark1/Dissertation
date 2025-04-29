@@ -461,40 +461,45 @@ class GaussianPolicy(nn.Module):
         plt.savefig('saved/cluster_vs_gate_heatmap.svg', format='svg')
         plt.close(fig)
 
+        # 1) determine each cluster’s “assigned” task by majority vote
+        cluster_to_task = {}
+        for i in range(rep_km.n_clusters):
+            members = tasks[rep_labels == i]
+            if members.size:
+                # pick the most common true-task index in cluster i
+                lead = np.bincount(members).argmax()
+                cluster_to_task[i] = task_names[lead]
+            else:
+                cluster_to_task[i] = f"cluster_{i}"
+
+        # 2) run PCA into 2D
         pca = PCA(n_components=2)
-        reps_2d = pca.fit_transform(rep_km.cluster_centers_)
+        reps_2d      = pca.fit_transform(reps.detach().cpu().numpy())
         centroids_2d = pca.transform(rep_km.cluster_centers_)
 
-        # 2) make the plot
+        # 3) plot
         fig, ax = plt.subplots(figsize=(6, 6))
-        # # plot all points lightly
-        # ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
-        #            alpha=0.2, s=10, color='gray', label='data points')
+        ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
+                   alpha=0.2, s=10, color='gray', label='data points')
 
-        # plot centroids and label them
         for i, (cx, cy) in enumerate(centroids_2d):
-            # pick the most common true-task in this cluster
-            members = tasks[rep_labels == i]
-            if members.size > 0:
-                name = task_names[np.bincount(members).argmax()]
-            else:
-                name = f'cluster_{i}'
-            # draw the centroid
+            label = cluster_to_task[i]
+            # centroid marker
             ax.scatter(cx, cy,
-                       marker='X', s=100, color='red', edgecolor='k')
-            # annotate with the task name
-            ax.text(cx + 0.02, cy + 0.02, name,
+                       marker='X', s=100, color='red', edgecolor='k',
+                       label=f"Cluster {i} → {label}" if i == 0 else "")
+            # text label
+            ax.text(cx + 0.02, cy + 0.02, label,
                     fontsize=9, weight='bold')
 
         ax.set_xlabel('PC 1')
         ax.set_ylabel('PC 2')
-        ax.set_title('KMeans Centroids Projected onto First 2 PCs')
-        ax.legend(loc='upper right')
+        ax.set_title('KMeans Clusters Labeled by Majority Task')
+        ax.legend(loc='upper right', fontsize=8)
 
         plt.tight_layout()
-        plt.savefig('saved/centroids_pca.svg', format='svg')
+        plt.savefig('saved/centroids_task_labels_pca.svg', format='svg')
         plt.close(fig)
-
 
 
 
