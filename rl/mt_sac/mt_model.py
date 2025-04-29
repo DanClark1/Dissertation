@@ -462,14 +462,14 @@ class GaussianPolicy(nn.Module):
         plt.close(fig)
 
         pca = PCA(n_components=2)
-        reps_2d = pca.fit_transform(reps.detach().cpu().numpy())
+        reps_2d = pca.fit_transform(rep_km.cluster_centers_)
         centroids_2d = pca.transform(rep_km.cluster_centers_)
 
         # 2) make the plot
         fig, ax = plt.subplots(figsize=(6, 6))
-        # plot all points lightly
-        ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
-                   alpha=0.2, s=10, color='gray', label='data points')
+        # # plot all points lightly
+        # ax.scatter(reps_2d[:, 0], reps_2d[:, 1],
+        #            alpha=0.2, s=10, color='gray', label='data points')
 
         # plot centroids and label them
         for i, (cx, cy) in enumerate(centroids_2d):
