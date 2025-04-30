@@ -248,20 +248,12 @@ class QNetwork(nn.Module):
 
         # Q1 architecture
         self.linear1_1 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
-        self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3_1 = nn.Linear(hidden_dim, hidden_dim)
         self.moe_1 = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts)
-        self.linear4_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear5_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_1 = nn.Linear(hidden_dim, 1)
 
         # Q1 architecture
         self.linear1_2 = nn.Linear(obs_size-num_tasks + action_size, hidden_dim)
-        self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3_2 = nn.Linear(hidden_dim, hidden_dim)
         self.moe_2 = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts)
-        self.linear4_2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear5_2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6_2 = nn.Linear(hidden_dim, 1)
 
         # self.apply(weights_init_)
@@ -271,20 +263,12 @@ class QNetwork(nn.Module):
         xu = torch.cat([obs, action], 1)
         
         x1 = F.relu(self.linear1_1(xu))
-        x1 = F.relu(self.linear2_1(x1))
-        x1 = F.relu(self.linear3_1(x1))
         x1, reg_loss_1 = self.moe_1(x1, task, record=record)
-        x1 = F.relu(self.linear4_1(x1))
-        x1 = F.relu(self.linear5_1(x1))
         x1 = self.linear6_1(x1)
 
 
         x2 = F.relu(self.linear1_2(xu))
-        x2 = F.relu(self.linear2_2(x2))
-        x2 = F.relu(self.linear3_2(x2))
         x2, reg_loss_2 = self.moe_2(x2, task, record=record)
-        x2 = F.relu(self.linear4_2(x2))
-        x2 = F.relu(self.linear5_2(x2))
         x2 = self.linear6_2(x2)
 
         return x1, x2, reg_loss_1 + reg_loss_2
@@ -297,12 +281,7 @@ class GaussianPolicy(nn.Module):
         self.num_tasks = num_tasks
         
         self.linear1 = nn.Linear(obs_size-num_tasks, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         self.moe = MoELayer(hidden_dim, hidden_dim, num_tasks, num_experts=num_experts) 
-
-        self.single_moe = MoELayer(obs_size-num_tasks, hidden_dim, num_tasks)
-
         self.mean_linear = nn.Linear(hidden_dim, action_size)
         self.log_std_linear = nn.Linear(hidden_dim, action_size)
 
@@ -321,8 +300,6 @@ class GaussianPolicy(nn.Module):
     def forward(self, obs, record=False):
         obs, task = utils.format_obs(obs, num_tasks=self.num_tasks)
         x = F.relu(self.linear1(obs))
-        x = F.relu(self.linear2(x))
-        x = F.relu(self.linear3(x))
         x, reg_loss = self.moe(x, task, record=record)
         mean = self.mean_linear(x)
         log_std = self.log_std_linear(x)
